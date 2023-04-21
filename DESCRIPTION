@@ -1,5 +1,5 @@
 Package: EPBO
-Title: Implement Common Mathematical Modeling Algorithms with R
+Title: Bayesian Optimization via Exact Penalty
 Version: 0.0.0.9000
 Authors@R: 
   person(given = "Jiangyan", 
