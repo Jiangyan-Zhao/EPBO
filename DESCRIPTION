@@ -1,15 +1,14 @@
 Package: EPBO
-Title: Bayesian Optimization via Exact Penalty
+Title: Constrained Bayesian Optimization via Exact Penalty
 Version: 0.0.0.9000
+Date: 2023-06-04
 Authors@R: 
   person(given = "Jiangyan", 
          family = "Zhao", 
          email = "zhaojy2017@126.com", 
          role = c("aut", "cre"))
-Description: Mathematical modeling algorithms are classified as evaluation, 
-  optimization, prediction, dynamics, graph theory, statistics,
-  intelligence, etc. This package is dedicated to implementing various
-  common mathematical modeling algorithms with R.
+Description: Wrapper routines for blackbox optimization under mixed equality and inequality 
+  constraints via an exact penalty.
 License: AGPL (>= 3)
 URL: https://github.com/Jiangyan-Zhao/EPBO
 BugReports: https://github.com/Jiangyan-Zhao/EPBO/issues
@@ -17,10 +16,10 @@ Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.3
-Imports: 
-    laGP
-Depends: 
-    R (>= 2.10)
+Imports: laGP, tgp
+Depends: R (>= 2.14)
 Suggests: 
-    testthat (>= 3.0.0)
+    stats,
+    testthat (>= 3.0.0),
+    utils
 Config/testthat/edition: 3
