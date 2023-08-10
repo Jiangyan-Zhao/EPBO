@@ -17,10 +17,13 @@ optim.EP(
   ncandf = function(k) {
      k
  },
-  ey.tol = 0.01,
-  dg.start = c(0.1, 1e-06),
+  ey_tol = 0.01,
+  dg_start = c(0.1, 1e-06),
   ab = c(3/2, 8),
-  dlim = sqrt(ncol(B)) * c(1/100, 10),
+  dlim = sqrt(nrow(B)) * c(0.001, 10),
+  TR_control = list(length = 0.8, length0 = 0.8, length_min = 0.5^7, length_max = 1.6,
+    failure_counter = 0, failure_tolerance = nrow(B), success_counter = 0,
+    success_tolerance = nrow(B)),
   verb = 2,
   ...
 )
@@ -66,12 +69,7 @@ the default setting of \code{rho = NULL} causes an automatic starting value to b
 expected improvement calculations) at round \code{t}; the default setting
 allows the number of candidates to grow linearly with \code{t}}
 
-\item{ey.tol}{a scalar proportion indicating how many of the EIs
-at \code{ncandf(t)} candidate locations must be non-zero to \dQuote{trust}
-that metric to guide search, reducing to an EY-based search instead
-(choosing that proportion to be one forces EY-based search)}
-
-\item{dg.start}{2-vector giving starting values for the lengthscale and nugget parameters
+\item{dg_start}{2-vector giving starting values for the lengthscale and nugget parameters
 of the GP surrogate model(s) for constraints}
 
 \item{ab}{prior parameters; see \code{\link{darg}} describing the prior used on the
@@ -79,6 +77,8 @@ lengthscale parameter during emulation(s) for the constraints}
 
 \item{dlim}{2-vector giving bounds for the lengthscale parameter(s) under MLE/MAP inference,
 thereby augmenting the prior specification in \code{ab}}
+
+\item{TR_control}{an optional list of control parameters of the trust region. See "Details".}
 
 \item{verb}{a non-negative integer indicating the verbosity level; the larger the value the
 more that is printed to the screen}
@@ -93,18 +93,21 @@ blackbox under optimization:
 \item{obj }{ vector giving the value of the objective for the input under consideration at each trial }
 \item{C }{ \code{matrix} giving the value of the constraint function for the input under consideration at each trial}
 \item{X }{ \code{matrix} giving the input values at which the blackbox function was evaluated }
-
-@seealso \code{\link[laGP]{optim.auglag}}, \code{\link[laGP]{optim.efi}}, \code{\link[EPBO]{optim.AE}}, \code{\link[EPBO]{optim.BM}}
+\item{idx_v}{index of the valid solutions}
 }
 \description{
 Black-box optimization under mixed equality and inequality constraints via an exact penalty.
+}
+\details{
+Additional details...
 }
 \examples{
 ## Inequality constrained problem
 # search space
 B = rbind(c(0, 1), c(0, 1)) 
 # Objective and constraint function for use 
-HSQ = function(x, B=rbind(c(0, 1), c(0, 1))){
+HSQ = function(x){
+  B = rbind(c(0, 1), c(0, 1))
   x = pmin(pmax(B[,1], x), B[,2])
   t = function(z)
     return(exp(-(z-1)^2) + exp(-0.8*(z+1)^2) - 0.05*sin(8*(z+0.1)))
@@ -120,7 +123,7 @@ EPBO$prog
 EPBO$xbest
 
 ## Mixed constrained problem
-#' # search space
+# search space
 B = rbind(c(0, 1), c(0, 1))
 # Objective and constraint function for use 
 goldstein.price = function(X) 
@@ -168,8 +171,8 @@ gsbpprob <- function(X, known.only=FALSE)
 { 
   if(is.null(nrow(X))) X <- matrix(X, nrow=1)
   if(known.only) stop("known.only not supported for this example")
-  f <- goldstein.price(X)
-  C <- gsbp.constraints(X)
+  f = goldstein.price(X)
+  C = gsbp.constraints(X)
   return(list(obj=f, c=cbind(C[,1], C[,2]/100, C[,3]/10)))
 }
 EPBO = optim.EP(gsbpprob, B, ncandf = function(k){ 1e3 }, start = 20, end = 120, 
@@ -179,6 +182,9 @@ EPBO = optim.EP(gsbpprob, B, ncandf = function(k){ 1e3 }, start = 20, end = 120,
 EPBO$prog
 # the recommended solution
 EPBO$xbest
+}
+\seealso{
+\code{\link[laGP]{optim.auglag}}, \code{\link[laGP]{optim.efi}}, \code{\link[EPBO]{optim.AE}}, \code{\link[EPBO]{optim.BM}}
 }
 \author{
 Jiangyan Zhao \email{zhaojy2017@126.com}

@@ -1,6 +1,6 @@
 Package: EPBO
 Title: Constrained Bayesian Optimization via Exact Penalty
-Version: 0.0.0.9000
+Version: 0.0.1
 Date: 2023-06-04
 Authors@R: 
   person(given = "Jiangyan", 

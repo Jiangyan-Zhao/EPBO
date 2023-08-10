@@ -62,6 +62,7 @@
 #' @importFrom stats optim 
 #' @importFrom stats pnorm 
 #' @importFrom stats sd
+#' @importFrom stats quantile
 #' @importFrom utils tail
 #' 
 #' @export
