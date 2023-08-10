@@ -164,28 +164,41 @@ optim.EP = function(blackbox, B,
                     ey_tol=0.01,
                     dg_start=c(0.1, 1e-6), ab=c(3/2, 8), 
                     dlim=sqrt(nrow(B))*c(1e-3, 10), 
-                    TR_control=list(length=0.8, length0=0.8,
-                                    length_min=0.5^7, length_max=1.6, 
-                                    failure_counter=0, failure_tolerance=nrow(B), 
-                                    success_counter=0, success_tolerance=nrow(B)),
+                    # TR_control=list(length=0.8, length0=0.8,
+                    #                 length_min=0.5^7, length_max=1.6, 
+                    #                 failure_counter=0, failure_tolerance=nrow(B), 
+                    #                 success_counter=0, success_tolerance=nrow(B)),
                     verb=2, ...)
 {
   ## check start
   if(start >= end) stop("must have start < end")
   
-  if (is.null(TR_control$length)) TR_control$length = 0.8
-  if (is.null(TR_control$length0)) TR_control$length0 = 0.8
-  if (is.null(TR_control$length_min)) TR_control$length_min = 0.5^7
-  if (is.null(TR_control$length_max)) TR_control$length_max = 1.6
-  if (is.null(TR_control$failure_counter)) TR_control$failure_counter = 0
-  if (is.null(TR_control$failure_tolerance)) TR_control$failure_tolerance = nrow(B)
-  if (is.null(TR_control$success_counter)) TR_control$success_counter = 0
-  if (is.null(TR_control$success_tolerance)) TR_control$success_tolerance = nrow(B)
+  dim = nrow(B) # dimension
+   
+  # if (is.null(TR_control$length)) TR_control$length = 0.8
+  # if (is.null(TR_control$length0)) TR_control$length0 = 0.8
+  # if (is.null(TR_control$length_min)) TR_control$length_min = 0.5^7
+  # if (is.null(TR_control$length_max)) TR_control$length_max = 1.6
+  # if (is.null(TR_control$failure_counter)) TR_control$failure_counter = 0
+  # if (is.null(TR_control$failure_tolerance)) TR_control$failure_tolerance = dim
+  # if (is.null(TR_control$success_counter)) TR_control$success_counter = 0
+  # if (is.null(TR_control$success_tolerance)) TR_control$success_tolerance = dim
+  
   
   ## get initial design
-  X = dopt.gp(start, Xcand=lhs(10*start, B))$XX
-  X = rbind(Xstart, X)
+  Hypercube = matrix(c(rep(0,dim), rep(1,dim)), ncol=2)             # Hypercube
+  if(start>0){
+    X_unit = dopt.gp(start, Xcand=lhs(10*start, Hypercube))$XX
+    X = t(apply(X_unit, 1, function(x){x * (B[,2]-B[,1]) + B[,1]}))
+  }else{
+    X_unit = X = NULL
+  }
+  if(!is.null(Xstart)){
+    X_unit = rbind(t(apply(Xstart, 1, function(x){(x-B[,1])/(B[,2]-B[,1])})), X_unit)
+    X = rbind(Xstart, X)
+  }
   start = nrow(X)
+  if(start == 0) stop("must have nrow(Xstart)+start>0")
   
   ## first run to determine the number of constraints
   out = blackbox(X[1,], ...)
@@ -206,37 +219,41 @@ optim.EP = function(blackbox, B,
   equal = as.logical(equal)
   
   ## allocate progress objects, and initialize
-  prog = obj = rep(NA, start)
-  C = CV = matrix(NA, nrow=start, ncol=nc) # constraints and constraint violations
-  obj[1] = out$obj; C[1, ] = out$c
-  CV[1, !equal] = pmax(0, C[1, !equal]) # constraint violations for inequality
-  CV[1, equal] = abs(C[1, equal]) # constraint violations for equality
+  prog = rep(NA, start)                       # progress
+  obj = rep(NA, start)                        # objective values
+  feasibility = rep(NA, start)                # Whether the point is feasible?
+  C = matrix(NA, nrow=start, ncol=nc)         # constraint values
+  C_bilog = matrix(NA, nrow=start, ncol=nc)   # bi-log transformation of constraint values
+  CV = matrix(NA, nrow=start, ncol=nc)        # constraint violations in terms of bi-log transformation
   
-  prog[1] = ifelse(all(C[1,!equal] <= 0) && all(abs(C[1,equal]) <= ethresh), obj[1], Inf)
+  obj[1] = out$obj; C[1, ] = out$c; C_bilog[1, ] = sign(C[1, ])*log(1+abs(C[1, ]))
+  CV[1, !equal] = pmax(0, C_bilog[1, !equal]) # CV for inequality
+  CV[1, equal] = abs(C_bilog[1, equal])       # CV for equality
+  feasibility[1] = all(C[1,!equal] <= 0) && all(abs(C[1,equal]) <= ethresh)
+  prog[1] = ifelse(feasibility[1], obj[1], Inf)
   
   ## remainder of starting run
   for(k in 2:start) { ## now that problem is vectorized we can probably remove for
     out = blackbox(X[k,], ...)
-    obj[k] = out$obj; C[k,] = out$c
-    CV[k, !equal] = pmax(0, C[k, !equal]) # constraint violations for inequality
-    CV[k, equal] = abs(C[k, equal]) # constraint violations for equality
-    ## update best so far
-    prog[k] = ifelse(obj[k] < prog[k-1] && all(C[k,!equal] <= 0) && all(abs(C[k,equal]) <= ethresh), obj[k], prog[k-1]) 
+    obj[k] = out$obj; C[k,] = out$c; C_bilog[k, ] = sign(C[k, ])*log(1+abs(C[k, ]))
+    CV[k, !equal] = pmax(0, C_bilog[k, !equal])
+    CV[k, equal] = abs(C_bilog[k, equal])
+    feasibility[k] = all(C[k,!equal] <= 0) && all(abs(C[k,equal]) <= ethresh)
+    prog[k] = ifelse(feasibility[k] && obj[k] < prog[k-1], obj[k], prog[k-1]) 
   }
   
   ## handle initial rho value
-  idx_v = c() # the index of validity points
-  for (k in 1:start) {
-    if(all(C[k,!equal] <= 0) && all(abs(C[k,equal]) <= ethresh)) idx_v = c(idx_v, k)
-  }
-  
+  fmean = mean(obj); fsd = sd(obj)
+  obj_norm = (obj-fmean)/fsd       # standard normalization on objective values
+  # obj_norm = obj/max(abs(obj))
+
   ## handle initial rho values
   if(is.null(rho)){
-    ECV = colMeans(CV) # the constraint violation averaged over the current design
-    if(all(ECV == 0)){ # 
+    ECV = colMeans(CV)            # averaged CV
+    if(all(ECV == 0)){            # 
       rho = rep(0, nc)
     }else {
-      rho = mean(abs(obj)) * ECV/sum(ECV^2)
+      rho = mean(abs(obj_norm)) * ECV/sum(ECV^2)
     }
     if(any(equal)) rho[equal] = pmax(1/ethresh/sum(equal), rho[equal])
   }else{
@@ -246,34 +263,29 @@ optim.EP = function(blackbox, B,
   if(verb > 0){ cat("initial rho=(", paste(signif(rho,3), collapse=", "), ")\n", sep="") }
   
   ## calculate EP for data seen so far
-  scv = CV%*%rho      # weighted sum of the constraint violations
-  ep = obj + scv
-  ybest = min(ep)     # best EP seen so far
-  # scv_best = min(scv) # best scv seen so far
-  m2 = prog[start]   # best valid solution so far
+  scv = CV%*%rho        # weighted sum of the constraint violations
+  ep = obj_norm + scv
+  ybest = min(ep)       # best EP seen so far
+  scv_best = min(scv) # best scv seen so far
+  m2 = prog[start]      # best feasible solution so far
   ## best solution so far
-  if(is.finite(m2)){            # if at least one valid solution was found
+  if(is.finite(m2)){            # if at least one feasible solution was found
     xbest = X[which.min(prog),] 
-  }else{                        # if none of the solutions are valid
-    xbest = X[which.min(ep),] 
+  }else{                        # if none of the solutions are feasible
+    xbest = X[which.min(scv),] 
   }
   
   ## initialize objective surrogate
-  fmean = mean(obj); fsd = sd(obj)
-  fgpi = newGPsep(X, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
+  fgpi = newGPsep(X_unit, obj_norm, d = dg_start[1], g = dg_start[2], dK = TRUE)
   df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
   
   ## initializing constraint surrogates
   Cgpi = rep(NA, nc)
   dc = matrix(NA, nrow=nc, ncol=nrow(B))
-  Cmean = apply(C, 2, mean); Csd = apply(C, 2, sd)
   for (j in 1:nc) {
-    Cgpi[j] = newGPsep(X, (C[,j]-Cmean[j])/Csd[j], d=dg_start[1], g=dg_start[2], dK=TRUE)
+    Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
     dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
   }
-  
-  ## keeping track
-  rhos = rho
   
   ## iterating over the black box evaluations
   for (k in (start+1):end) {
@@ -284,16 +296,17 @@ optim.EP = function(blackbox, B,
       df[df<dlim[1]] = 10*dlim[1]
       df[df>dlim[2]] = dlim[2]/10
       fmean = mean(obj); fsd = sd(obj)
-      fgpi = newGPsep(X, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
+      obj_norm = (obj-fmean)/fsd
+      # obj_norm = obj/max(abs(obj))
+      fgpi = newGPsep(X_unit, obj_norm, d=df, g=dg_start[2], dK=TRUE)
       df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
       
       ## constraint surrogates 
-      Cmean = apply(C, 2, mean); Csd = apply(C, 2, sd)
       for(j in 1:nc) {
         deleteGPsep(Cgpi[j])
         dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
         dc[j, dc[j,]>dlim[2]] = dlim[2]/10
-        Cgpi[j] = newGPsep(X, (C[,j]-Cmean[j])/Csd[j], d=dc[j,], g=dg_start[2], dK=TRUE)
+        Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
         dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
       }
     }
@@ -308,7 +321,7 @@ optim.EP = function(blackbox, B,
       while(any(invalid) && nupdate<=5){
         rho[invalid] = rho[invalid]*2
         scv = CV%*%rho
-        ep = obj + scv
+        ep = obj_norm + scv
         ck = C[which.min(ep),]
         invalid[!equal] = (ck[!equal] > 0); invalid[equal] = (abs(ck[equal]) > ethresh)
         nupdate = nupdate + 1
@@ -316,43 +329,41 @@ optim.EP = function(blackbox, B,
       ybest = min(ep)
     }
     
-    ## Trust region
-    weights = df / (prod(df))^(1/length(df))
-    TR_length = TR_control$length * (B[,2]-B[,1]) * weights 
-    TR_lb = pmin(pmax(B[,1], xbest - TR_length/2), B[,2])
-    TR_ub = pmin(pmax(B[,1], xbest + TR_length/2), B[,2])
-    TR_B = cbind(TR_lb, TR_ub)
-    if(verb > 0) {
-      cat("k=", k, " ", sep="")
-      cat("TR_lb=[", paste(signif(TR_lb,3), collapse=" "), sep="")
-      cat("]; TR_ub=[", paste(signif(TR_ub,3), collapse=" "), "]\n", sep="")
-    }
+    # ## Trust region
+    # weights = df / (prod(df))^(1/length(df))
+    # TR_length = TR_control$length * (B[,2]-B[,1]) * weights 
+    # TR_lb = pmin(pmax(B[,1], xbest - TR_length/2), B[,2])
+    # TR_ub = pmin(pmax(B[,1], xbest + TR_length/2), B[,2])
+    # TR_B = cbind(TR_lb, TR_ub)
+    # if(verb > 0) {
+    #   cat("k=", k, " ", sep="")
+    #   cat("TR_lb=[", paste(signif(TR_lb,3), collapse=" "), sep="")
+    #   cat("]; TR_ub=[", paste(signif(TR_ub,3), collapse=" "), "]\n", sep="")
+    # }
     
     ## random candidate grid
     ncand = ncandf(k)
-    pert = lhs(ncand, TR_B)
-    # create a perturbation mask
-    prob_perturb = min(20/nrow(B), 1)
-    mask = matrix(runif(ncand*nrow(B)), ncol = nrow(B)) <= prob_perturb
-    ind_mask = which(rowSums(mask) == 0)
-    mask[ind_mask, sample.int(nrow(B), size = length(ind_mask), replace = TRUE)] = 1
-    cands = matrix(rep(xbest, ncand), nrow = ncand, byrow = TRUE)
-    cands[which(mask==1)] = pert[which(mask==1)]
+    cands = lhs(ncand, Hypercube)
+    # pert = lhs(ncand, TR_B)
+    # # create a perturbation mask
+    # prob_perturb = min(20/nrow(B), 1)
+    # mask = matrix(runif(ncand*nrow(B)), ncol = nrow(B)) <= prob_perturb
+    # ind_mask = which(rowSums(mask) == 0)
+    # mask[ind_mask, sample.int(nrow(B), size = length(ind_mask), replace = TRUE)] = 1
+    # cands = matrix(rep(xbest, ncand), nrow = ncand, byrow = TRUE)
+    # cands[which(mask==1)] = pert[which(mask==1)]
     
-    ## calculate composite surrogate, and evaluate EI and/or EY
-    AF = EP_AcqFunc(cands, fgpi, fmean, fsd, Cgpi, Cmean, Csd, ybest, rho, 
-                    equal, blackbox, eiey="ei")
+    ## calculate composite surrogate, and evaluate SEI and/or EY
+    AF = EP_AcqFunc(cands, fgpi, Cgpi, ybest, rho, equal, eiey="sei")
     nzsei = sum(AF > sqrt(.Machine$double.eps))
     if(nzsei > 0.01*ncand){ # maximization expected improvement approach in TR_B
       m = which.max(AF)
       out = optim(par=cands[m, ], fn=EP_AcqFunc, method="L-BFGS-B",
-                  lower=TR_lb, upper=TR_ub,
+                  lower=rep(0,dim), upper=rep(1,dim),
+                  fgpi=fgpi, Cgpi=Cgpi, 
                   control = list(fnscale = -1), # maximization problem
-                  fgpi=fgpi, fmean=fmean, fsd=fsd,
-                  Cgpi=Cgpi, Cmean=Cmean, Csd=Csd,
-                  eiey="ei", ybest=ybest, rho=rho, equal=equal, 
-                  blackbox=blackbox)
-      by = "ei"
+                  eiey="sei", ybest=ybest, rho=rho, equal=equal)
+      by = "sei"
     }else{
       # if(verb > 0) cat("TR_B to B \n")
       # cands_big = lhs(ncand, B)
@@ -370,38 +381,38 @@ optim.EP = function(blackbox, B,
       #               blackbox=blackbox)
       #   by = "ei"
       # }else{# minimization predictive mean approach in TR_B
-        AF = EP_AcqFunc(cands, fgpi, fmean, fsd, Cgpi, Cmean, Csd, ybest, rho, 
-                        equal, blackbox, eiey="ey")
+        AF = EP_AcqFunc(cands, fgpi, Cgpi, ybest, rho, equal, eiey="ey")
         m = which.min(AF)
         out = optim(par=cands[m, ], fn=EP_AcqFunc, method="L-BFGS-B",
-                    lower=TR_lb, upper=TR_ub,
-                    fgpi=fgpi, fmean=fmean, fsd=fsd,
-                    Cgpi=Cgpi, Cmean=Cmean, Csd=Csd,
-                    eiey="ey",ybest=ybest, rho=rho, equal=equal, 
-                    blackbox=blackbox)
+                    lower=rep(0,dim), upper=rep(1,dim),
+                    fgpi=fgpi, Cgpi=Cgpi, 
+                    eiey="ey",ybest=ybest, rho=rho, equal=equal)
         by = "ey"
       # }
     }
     
     
     ## calculate next point
-    xnext = matrix(out$par, nrow = 1)
+    xnext_unit = matrix(out$par, nrow = 1)
+    X_unit = rbind(X_unit, xnext_unit)
+    xnext = xnext_unit * (B[,2]-B[,1]) + B[,1]
     X = rbind(X, xnext)
     
     ## new run
     out = blackbox(xnext, ...)
-    fnext = out$obj; obj = c(obj, fnext); C = rbind(C, out$c)
+    fnext = out$obj; obj = c(obj, fnext); 
+    obj_norm = (obj-fmean)/fsd
+    # obj_norm = obj/max(abs(obj))
+    C = rbind(C, out$c); C_bilog = rbind(C_bilog, sign(out$c)*log(1+abs(out$c)))
     CV = rbind(CV, rep(NA, nc))
-    CV[k, !equal] = pmax(0, C[k, !equal]) # constraint violations for inequality
-    CV[k, equal] = abs(C[k, equal]) # constraint violations for equality
-    
-    ## the index of validity points
-    if(all(out$c[!equal] <= 0) && all(abs(out$c[equal]) <= ethresh)) idx_v = c(idx_v, k)
+    CV[k, !equal] = pmax(0, C_bilog[k, !equal]) # constraint violations for inequality
+    CV[k, equal] = abs(C_bilog[k, equal]) # constraint violations for equality
     
     ## check if best valid has changed
-    if(all(out$c[!equal] <= 0) && all(abs(out$c[equal]) <= ethresh) && fnext < tail(prog,1)) {
+    feasibility = c(feasibility, all(out$c[!equal] <= 0) && all(abs(out$c[equal]) <= ethresh))
+    if(feasibility[k] && fnext < prog[k-1]) {
       m2 = fnext
-    } # otherwise m2 unchanged; should be the same as tail(prog,1)
+    } # otherwise m2 unchanged; should be the same as prog[k-1]
     prog = c(prog, m2)
     
     ## rho update
@@ -409,23 +420,22 @@ optim.EP = function(blackbox, B,
     if(all(ECV == 0)){ # 
       rho_new = rep(0, nc)
     }else {
-      rho_new = mean(abs(obj)) * ECV/sum(ECV^2)
+      rho_new = mean(abs(obj_norm)) * ECV/sum(ECV^2)
     }
     if(verb > 0 && any(rho_new > rho)){ # printing progress
       cat("updating rho=(", paste(signif(pmax(rho_new, rho),3), collapse=", "), ")\n", sep="")
     }
     rho = pmax(rho_new, rho)
-    rhos = rbind(rhos, rho) # keep track of rho
     
     ## calculate EP for data seen so far
     scv  = CV%*%rho
-    ep = obj + scv
+    ep = obj_norm + scv
     ybest = min(ep)
-    # scv_best = min(scv)
+    scv_best = min(scv)
     if(is.finite(m2)){ # best solution so far
       xbest = X[which.min(prog),] 
     }else{ 
-      xbest = X[which.min(ep),] 
+      xbest = X[which.min(scv),] 
     }
     
     ## progress meter
@@ -436,55 +446,55 @@ optim.EP = function(blackbox, B,
       cat("]; ybest (prog=", m2, ", ep=", ybest, ")\n", sep="")
     }
     
-    ## update TR_control
-    if(is.finite(m2)){ # if at least one valid solution was found
-      if(which.min(prog) == k){
-        TR_control$success_counter = TR_control$success_counter + 1
-        TR_control$failure_counter = 0
-      }else{
-        TR_control$failure_counter = TR_control$failure_counter + 1
-        TR_control$success_counter = 0
-      }
-    }else{             # if none of the solutions are valid
-      if(which.min(scv) == k){
-        TR_control$success_counter = TR_control$success_counter + 1
-        TR_control$failure_counter = 0
-      }else{
-        TR_control$failure_counter = TR_control$failure_counter + 1
-        TR_control$success_counter = 0
-      }
-    }
-    ## update the trust region
-    if(TR_control$success_counter == TR_control$success_tolerance){
-      # expand trust region
-      TR_control$length = min(TR_control$length * 2, TR_control$length_max)
-      TR_control$success_counter = 0
-    }
-    if(TR_control$failure_counter == TR_control$failure_tolerance){
-      # shrink trust region
-      TR_control$length = TR_control$length / 2
-      TR_control$failure_counter = 0
-    }
-    if(TR_control$length < TR_control$length_min){
-      # restart when trust region becomes too small
-      TR_control$length = TR_control$length0
-      TR_control$success_counter = 0
-      TR_control$failure_counter = 0
-      if(verb > 0) cat("restart when trust region becomes too small \n")
-    }
-    if(verb > 0) {
-      cat("TR_control: length=", TR_control$length,
-          "; success_counter=", TR_control$success_counter,
-          "; failure_counter=", TR_control$failure_counter, "\n", sep="")
-    }
+    # ## update TR_control
+    # if(is.finite(m2)){ # if at least one valid solution was found
+    #   if(which.min(prog) == k){
+    #     TR_control$success_counter = TR_control$success_counter + 1
+    #     TR_control$failure_counter = 0
+    #   }else{
+    #     TR_control$failure_counter = TR_control$failure_counter + 1
+    #     TR_control$success_counter = 0
+    #   }
+    # }else{             # if none of the solutions are valid
+    #   if(which.min(scv) == k){
+    #     TR_control$success_counter = TR_control$success_counter + 1
+    #     TR_control$failure_counter = 0
+    #   }else{
+    #     TR_control$failure_counter = TR_control$failure_counter + 1
+    #     TR_control$success_counter = 0
+    #   }
+    # }
+    # ## update the trust region
+    # if(TR_control$success_counter == TR_control$success_tolerance){
+    #   # expand trust region
+    #   TR_control$length = min(TR_control$length * 2, TR_control$length_max)
+    #   TR_control$success_counter = 0
+    # }
+    # if(TR_control$failure_counter == TR_control$failure_tolerance){
+    #   # shrink trust region
+    #   TR_control$length = TR_control$length / 2
+    #   TR_control$failure_counter = 0
+    # }
+    # if(TR_control$length < TR_control$length_min){
+    #   # restart when trust region becomes too small
+    #   TR_control$length = TR_control$length0
+    #   TR_control$success_counter = 0
+    #   TR_control$failure_counter = 0
+    #   if(verb > 0) cat("restart when trust region becomes too small \n")
+    # }
+    # if(verb > 0) {
+    #   cat("TR_control: length=", TR_control$length,
+    #       "; success_counter=", TR_control$success_counter,
+    #       "; failure_counter=", TR_control$failure_counter, "\n", sep="")
+    # }
     
     
     ## update GP fits
-    updateGPsep(fgpi, xnext, (fnext-fmean)/fsd, verb = verb-2)
+    updateGPsep(fgpi, xnext_unit, obj_norm[k], verb = verb-2)
     df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
     
     for(j in 1:nc) {
-      updateGPsep(Cgpi[j], xnext, (out$c[j]-Cmean[j])/Csd[j], verb = verb-2)
+      updateGPsep(Cgpi[j], xnext_unit, C_bilog[k,j], verb = verb-2)
       dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
     }
   }
@@ -493,30 +503,30 @@ optim.EP = function(blackbox, B,
   deleteGPsep(fgpi)
   for(j in 1:nc) deleteGPsep(Cgpi[j])
   
-  return(list(prog = prog, xbest = xbest, obj = obj, C=C, X = X, idx_v = idx_v))
+  return(list(prog = prog, xbest = xbest, obj = obj, C=C, X = X, feasibility=feasibility, rho=rho))
 }
 
 
-EP_AcqFunc = function(x, fgpi, fmean, fsd, Cgpi, Cmean, Csd, ybest, rho, equal, blackbox=NULL, eiey="ei")
+EP_AcqFunc = function(x, fgpi, Cgpi, ybest, rho, equal, eiey="ei")
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x)
   nc = length(Cgpi) # number of the constraint
   
   ## Acquaisition function
-  if(eiey == "ei"){
+  if(eiey == "sei"){
     ## objective
     pred_f = predGPsep(fgpi, x, lite=TRUE)
-    mu_f = pred_f$mean * fsd + fmean
-    sigma_f =  sqrt(pred_f$s2) * fsd
+    mu_f = pred_f$mean
+    sigma_f =  sqrt(pred_f$s2)
     
     ## constraints
     mu_C = sigma_C = omega = matrix(NA, nc, ncand)
     
     for (j in 1:nc) {
       pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
-      mu_C[j,] = pred_C$mean * Csd[j] + Cmean[j]
-      sigma_C[j,] = sqrt(pred_C$s2) * Csd[j]
+      mu_C[j,] = pred_C$mean
+      sigma_C[j,] = sqrt(pred_C$s2)
       omega[j,] = (equal[j]+1)*pnorm(mu_C[j,]/sigma_C[j,]) - equal[j]
     }
     
@@ -536,15 +546,15 @@ EP_AcqFunc = function(x, fgpi, fmean, fsd, Cgpi, Cmean, Csd, ybest, rho, equal, 
   }else if(eiey == "ey"){
     ## objective
     pred_f = predGPsep(fgpi, x, lite=TRUE)
-    mu_f = pred_f$mean * fsd + fmean
+    mu_f = pred_f$mean
     
     ## constraints
     mu_C = sigma_C = EV = matrix(NA, nc, nrow(x))
     
     for (j in 1:nc) {
       pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
-      mu_C[j,] = pred_C$mean * Csd[j] + Cmean[j]
-      sigma_C[j,] = sqrt(pred_C$s2) * Csd[j]
+      mu_C[j,] = pred_C$mean
+      sigma_C[j,] = sqrt(pred_C$s2)
       dC = mu_C[j,]/sigma_C[j,]
       EV[j,] = mu_C[j,]*((equal[j]+1)*pnorm(dC) - equal[j]) + (equal[j]+1)*sigma_C[j,]*dnorm(dC)
     }
@@ -552,7 +562,7 @@ EP_AcqFunc = function(x, fgpi, fmean, fsd, Cgpi, Cmean, Csd, ybest, rho, equal, 
     ## Acquaisition function
     AF = mu_f + rho%*%EV
   }else{
-    stop("eiey should be 'ei' or 'ey'.")
+    stop("eiey should be 'sei' or 'ey'.")
   }
   return(AF)
 }

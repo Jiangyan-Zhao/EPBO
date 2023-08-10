@@ -21,9 +21,6 @@ optim.EP(
   dg_start = c(0.1, 1e-06),
   ab = c(3/2, 8),
   dlim = sqrt(nrow(B)) * c(0.001, 10),
-  TR_control = list(length = 0.8, length0 = 0.8, length_min = 0.5^7, length_max = 1.6,
-    failure_counter = 0, failure_tolerance = nrow(B), success_counter = 0,
-    success_tolerance = nrow(B)),
   verb = 2,
   ...
 )
@@ -78,12 +75,12 @@ lengthscale parameter during emulation(s) for the constraints}
 \item{dlim}{2-vector giving bounds for the lengthscale parameter(s) under MLE/MAP inference,
 thereby augmenting the prior specification in \code{ab}}
 
-\item{TR_control}{an optional list of control parameters of the trust region. See "Details".}
-
 \item{verb}{a non-negative integer indicating the verbosity level; the larger the value the
 more that is printed to the screen}
 
 \item{...}{additional arguments passed to \code{blackbox}}
+
+\item{TR_control}{an optional list of control parameters of the trust region. See "Details".}
 }
 \value{
 The output is a \code{list} summarizing the progress of the evaluations of the
