@@ -162,27 +162,41 @@ optim.EP = function(blackbox, B,
                     urate=10, rho=NULL, 
                     ncandf=function(k) { k }, 
                     ey_tol=0.01,
-                    dg_start=c(0.1, 1e-6), ab=c(3/2, 8), 
+                    dg_start=c(0.1, 1e-6), 
+                    ab=c(3/2, 8), 
                     dlim=sqrt(nrow(B))*c(1e-3, 10), 
-                    # TR_control=list(length=0.8, length0=0.8,
-                    #                 length_min=0.5^7, length_max=1.6, 
-                    #                 failure_counter=0, failure_tolerance=nrow(B), 
-                    #                 success_counter=0, success_tolerance=nrow(B)),
+                    trcontrol=list(GLratio = c(1,1), sigma = 0.2^(1/nrow(B)), 
+                                   maxsigma = 0.8, minsigma = 1/2^8,
+                                   beta=0.9, alpha=1/0.9, kappa = 1e-4),
                     verb=2, ...)
 {
   ## check start
   if(start >= end) stop("must have start < end")
+  if(start == 0 & is.null(Xstart)) stop("must have start>0 or given Xstart")
   
   dim = nrow(B) # dimension
    
-  # if (is.null(TR_control$length)) TR_control$length = 0.8
-  # if (is.null(TR_control$length0)) TR_control$length0 = 0.8
-  # if (is.null(TR_control$length_min)) TR_control$length_min = 0.5^7
-  # if (is.null(TR_control$length_max)) TR_control$length_max = 1.6
-  # if (is.null(TR_control$failure_counter)) TR_control$failure_counter = 0
-  # if (is.null(TR_control$failure_tolerance)) TR_control$failure_tolerance = dim
-  # if (is.null(TR_control$success_counter)) TR_control$success_counter = 0
-  # if (is.null(TR_control$success_tolerance)) TR_control$success_tolerance = dim
+  # Check trcontrol
+  if (is.null(trcontrol$sigma)) trcontrol$sigma = 0.2^(1/dim)/2
+  trcontrol$sigma0 = trcontrol$sigma
+  if (is.null(trcontrol$maxsigma)) trcontrol$maxsigma = 0.8
+  if (is.null(trcontrol$minsigma)) trcontrol$minsigma = 1/2^8
+  if (is.null(trcontrol$beta)) trcontrol$beta = 0.9
+  if (is.null(trcontrol$alpha)) trcontrol$alpha =  1/trcontrol$beta
+  if (is.null(trcontrol$kappa)) trcontrol$kappa = 1e-4
+  if (is.null(trcontrol$GLratio)) trcontrol$GLratio = c(1,1)
+  
+  max_global = trcontrol$GLratio[1]
+  max_local = trcontrol$GLratio[2]
+  if(max_global+max_local == 0) stop("must have max_global>0 or max_local>0")
+  if (max_global == 0) {
+    global_step <- FALSE
+  } else if (max_local == 0){
+    global_step <- TRUE
+  } else {
+    global_step <- TRUE
+  }
+  n_global = n_local = 0
   
   
   ## get initial design
@@ -190,15 +204,18 @@ optim.EP = function(blackbox, B,
   if(start>0){
     X_unit = dopt.gp(start, Xcand=lhs(10*start, Hypercube))$XX
     X = t(apply(X_unit, 1, function(x){x * (B[,2]-B[,1]) + B[,1]}))
+    # X = matrix(rep(B[,1], start), byrow=TRUE, ncol=dim) + X_unit * matrix(rep((B[,2]-B[,1]), start), byrow=TRUE, ncol=dim)
   }else{
     X_unit = X = NULL
   }
   if(!is.null(Xstart)){
-    X_unit = rbind(t(apply(Xstart, 1, function(x){(x-B[,1])/(B[,2]-B[,1])})), X_unit)
+    Xstart_unit = t(apply(Xstart, 1, function(x){(x-B[,1])/(B[,2]-B[,1])}))
+    # Xstart_unit = (Xstart - matrix(rep(B[,1], nrow(Xstart)), byrow=TRUE, ncol=dim)) / matrix(rep((B[,2]-B[,1]), nrow(Xstart)), byrow=TRUE, ncol=dim)
+    X_unit = rbind(Xstart_unit, X_unit)
     X = rbind(Xstart, X)
   }
   start = nrow(X)
-  if(start == 0) stop("must have nrow(Xstart)+start>0")
+  
   
   ## first run to determine the number of constraints
   out = blackbox(X[1,], ...)
@@ -265,7 +282,7 @@ optim.EP = function(blackbox, B,
   ## calculate EP for data seen so far
   scv = CV%*%rho        # weighted sum of the constraint violations
   ep = obj_norm + scv
-  ybest = min(ep)       # best EP seen so far
+  epbest = min(ep)       # best EP seen so far
   scv_best = min(scv) # best scv seen so far
   m2 = prog[start]      # best feasible solution so far
   ## best solution so far
@@ -281,7 +298,7 @@ optim.EP = function(blackbox, B,
   
   ## initializing constraint surrogates
   Cgpi = rep(NA, nc)
-  dc = matrix(NA, nrow=nc, ncol=nrow(B))
+  dc = matrix(NA, nrow=nc, ncol=dim)
   for (j in 1:nc) {
     Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
     dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
@@ -326,72 +343,59 @@ optim.EP = function(blackbox, B,
         invalid[!equal] = (ck[!equal] > 0); invalid[equal] = (abs(ck[equal]) > ethresh)
         nupdate = nupdate + 1
       }
-      ybest = min(ep)
+      epbest = min(ep)
     }
     
-    # ## Trust region
-    # weights = df / (prod(df))^(1/length(df))
-    # TR_length = TR_control$length * (B[,2]-B[,1]) * weights 
-    # TR_lb = pmin(pmax(B[,1], xbest - TR_length/2), B[,2])
-    # TR_ub = pmin(pmax(B[,1], xbest + TR_length/2), B[,2])
-    # TR_B = cbind(TR_lb, TR_ub)
-    # if(verb > 0) {
-    #   cat("k=", k, " ", sep="")
-    #   cat("TR_lb=[", paste(signif(TR_lb,3), collapse=" "), sep="")
-    #   cat("]; TR_ub=[", paste(signif(TR_ub,3), collapse=" "), "]\n", sep="")
-    # }
     
     ## random candidate grid
     ncand = ncandf(k)
-    cands = lhs(ncand, Hypercube)
-    # pert = lhs(ncand, TR_B)
-    # # create a perturbation mask
-    # prob_perturb = min(20/nrow(B), 1)
-    # mask = matrix(runif(ncand*nrow(B)), ncol = nrow(B)) <= prob_perturb
-    # ind_mask = which(rowSums(mask) == 0)
-    # mask[ind_mask, sample.int(nrow(B), size = length(ind_mask), replace = TRUE)] = 1
-    # cands = matrix(rep(xbest, ncand), nrow = ncand, byrow = TRUE)
-    # cands[which(mask==1)] = pert[which(mask==1)]
-    
-    ## calculate composite surrogate, and evaluate SEI and/or EY
-    AF = EP_AcqFunc(cands, fgpi, Cgpi, ybest, rho, equal, eiey="sei")
-    nzsei = sum(AF > sqrt(.Machine$double.eps))
-    if(nzsei > 0.01*ncand){ # maximization expected improvement approach in TR_B
-      m = which.max(AF)
-      out = optim(par=cands[m, ], fn=EP_AcqFunc, method="L-BFGS-B",
-                  lower=rep(0,dim), upper=rep(1,dim),
-                  fgpi=fgpi, Cgpi=Cgpi, 
-                  control = list(fnscale = -1), # maximization problem
-                  eiey="sei", ybest=ybest, rho=rho, equal=equal)
-      by = "sei"
+    if(global_step){
+      if(verb > 0){ cat("k=", k, " global step ", "\n", sep="") }
+      cands = lhs(ncand, Hypercube)
+      TRlower = Hypercube[, 1]
+      TRupper = Hypercube[, 2]
     }else{
-      # if(verb > 0) cat("TR_B to B \n")
-      # cands_big = lhs(ncand, B)
-      # AF = EP_AcqFunc(cands_big, fgpi, fmean, fsd, Cgpi, Cmean, Csd, ybest, rho, 
-      #                 equal, blackbox, eiey="ei")
-      # nzsei = sum(AF > sqrt(.Machine$double.eps))
-      # if(nzsei > 0.01*ncand){ # maximization expected improvement approach in B
-      #   m = which.max(AF)
-      #   out = optim(par=cands_big[m, ], fn=EP_AcqFunc, method="L-BFGS-B",
-      #               lower=B[,1], upper=B[,2], 
-      #               control = list(fnscale = -1), # maximization problem
-      #               fgpi=fgpi, fmean=fmean, fsd=fsd,
-      #               Cgpi=Cgpi, Cmean=Cmean, Csd=Csd,
-      #               eiey="ei", ybest=ybest, rho=rho, equal=equal, 
-      #               blackbox=blackbox)
-      #   by = "ei"
-      # }else{# minimization predictive mean approach in TR_B
-        AF = EP_AcqFunc(cands, fgpi, Cgpi, ybest, rho, equal, eiey="ey")
-        m = which.min(AF)
-        out = optim(par=cands[m, ], fn=EP_AcqFunc, method="L-BFGS-B",
-                    lower=rep(0,dim), upper=rep(1,dim),
-                    fgpi=fgpi, Cgpi=Cgpi, 
-                    eiey="ey",ybest=ybest, rho=rho, equal=equal)
-        by = "ey"
-      # }
+      if(verb > 0) { cat("k=", k, " local step ", "\n", sep="") }
+      ## Trust region space
+      # weights = df / (prod(df))^(1/length(df))
+      # trcontrol$sigma = trcontrol$sigma * weights 
+      xbest_unit = (xbest-B[,1])/(B[,2]-B[,1])
+      TRlower = pmax(xbest_unit - trcontrol$sigma, 0)
+      TRupper = pmin(xbest_unit + trcontrol$sigma, 1)
+      TRspace = cbind(TRlower, TRupper)
+      
+      ## random candidate grid
+      cands = lhs(ncand, TRspace)
+      # pert = lhs(ncand, TRspace)
+      # # create a perturbation mask
+      # prob_perturb = min(20/dim, 1)
+      # mask = matrix(runif(ncand*dim), ncol = dim) <= prob_perturb
+      # ind_mask = which(rowSums(mask) == 0)
+      # mask[ind_mask, sample.int(dim, size = length(ind_mask), replace = TRUE)] = 1
+      # cands = matrix(rep(xbest, ncand), nrow = ncand, byrow = TRUE)
+      # cands[which(mask==1)] = pert[which(mask==1)]
     }
     
-    
+    ## calculate composite surrogate, and evaluate SEI and/or EY
+    AF = EP_AcqFunc(cands, fgpi, Cgpi, epbest, rho, equal, eiey="sei")
+    m = which.max(AF)
+    if(AF[m] > 1e-6){ # maximization expected improvement approach
+      out = optim(par=cands[m, ], fn=EP_AcqFunc, method="L-BFGS-B",
+                  lower=TRlower, upper=TRupper,
+                  fgpi=fgpi, Cgpi=Cgpi, 
+                  control = list(fnscale = -1), # maximization problem
+                  eiey="sei", epbest=epbest, rho=rho, equal=equal)
+      by = "sei"
+    }else{# Restart optimization with minimization predictive mean approach
+      AF = EP_AcqFunc(cands, fgpi, Cgpi, epbest, rho, equal, eiey="ey")
+      m = which.min(AF)
+      out = optim(par=cands[m, ], fn=EP_AcqFunc, method="L-BFGS-B",
+                  lower=TRlower, upper=TRupper,
+                  fgpi=fgpi, Cgpi=Cgpi, 
+                  eiey="ey",epbest=epbest, rho=rho, equal=equal)
+      by = "ey"
+    }
+
     ## calculate next point
     xnext_unit = matrix(out$par, nrow = 1)
     X_unit = rbind(X_unit, xnext_unit)
@@ -400,10 +404,10 @@ optim.EP = function(blackbox, B,
     
     ## new run
     out = blackbox(xnext, ...)
-    fnext = out$obj; obj = c(obj, fnext); 
+    fnext = out$obj; obj = c(obj, fnext); C = rbind(C, out$c)
     obj_norm = (obj-fmean)/fsd
     # obj_norm = obj/max(abs(obj))
-    C = rbind(C, out$c); C_bilog = rbind(C_bilog, sign(out$c)*log(1+abs(out$c)))
+    C_bilog = rbind(C_bilog, sign(out$c)*log(1+abs(out$c)))
     CV = rbind(CV, rep(NA, nc))
     CV[k, !equal] = pmax(0, C_bilog[k, !equal]) # constraint violations for inequality
     CV[k, equal] = abs(C_bilog[k, equal]) # constraint violations for equality
@@ -430,7 +434,7 @@ optim.EP = function(blackbox, B,
     ## calculate EP for data seen so far
     scv  = CV%*%rho
     ep = obj_norm + scv
-    ybest = min(ep)
+    epbest = min(ep)
     scv_best = min(scv)
     if(is.finite(m2)){ # best solution so far
       xbest = X[which.min(prog),] 
@@ -440,53 +444,70 @@ optim.EP = function(blackbox, B,
     
     ## progress meter
     if(verb > 0) {
-      cat(by, "=", AF[m], " (", nzsei,  "/", ncand, ")", sep="")
+      cat(by, "=", AF[m], sep="")
       cat("; xnext=[", paste(signif(xnext,3), collapse=" "), sep="")
       cat("]; xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
-      cat("]; ybest (prog=", m2, ", ep=", ybest, ")\n", sep="")
+      cat("]; ybest (prog=", m2, ", ep=", epbest, ")\n", sep="")
     }
     
-    # ## update TR_control
-    # if(is.finite(m2)){ # if at least one valid solution was found
-    #   if(which.min(prog) == k){
-    #     TR_control$success_counter = TR_control$success_counter + 1
-    #     TR_control$failure_counter = 0
-    #   }else{
-    #     TR_control$failure_counter = TR_control$failure_counter + 1
-    #     TR_control$success_counter = 0
-    #   }
-    # }else{             # if none of the solutions are valid
-    #   if(which.min(scv) == k){
-    #     TR_control$success_counter = TR_control$success_counter + 1
-    #     TR_control$failure_counter = 0
-    #   }else{
-    #     TR_control$failure_counter = TR_control$failure_counter + 1
-    #     TR_control$success_counter = 0
-    #   }
-    # }
-    # ## update the trust region
-    # if(TR_control$success_counter == TR_control$success_tolerance){
-    #   # expand trust region
-    #   TR_control$length = min(TR_control$length * 2, TR_control$length_max)
-    #   TR_control$success_counter = 0
-    # }
-    # if(TR_control$failure_counter == TR_control$failure_tolerance){
-    #   # shrink trust region
-    #   TR_control$length = TR_control$length / 2
-    #   TR_control$failure_counter = 0
-    # }
-    # if(TR_control$length < TR_control$length_min){
-    #   # restart when trust region becomes too small
-    #   TR_control$length = TR_control$length0
-    #   TR_control$success_counter = 0
-    #   TR_control$failure_counter = 0
-    #   if(verb > 0) cat("restart when trust region becomes too small \n")
-    # }
-    # if(verb > 0) {
-    #   cat("TR_control: length=", TR_control$length,
-    #       "; success_counter=", TR_control$success_counter,
-    #       "; failure_counter=", TR_control$failure_counter, "\n", sep="")
-    # }
+    ## sufficient decrease condition
+    if(is.finite(m2)){ # if at least one valid solution was found
+      if(feasibility[k] && fnext < (prog[k-1]-trcontrol$kappa*trcontrol$sigma^2)){success = TRUE}else{success = FALSE}
+    }else{             # if none of the solutions are valid
+      if(which.min(scv) == k){success = TRUE}else{success = FALSE}
+    }
+    
+    
+    # Update number of consecutive trial / local steps
+    if(global_step){n_global = n_global + 1}else{n_local = n_local + 1}
+
+    
+    ## Update Trust-region scheme
+    if (success) {
+      ## Successfull step: update TR and go back to global step if needed
+      if (global_step) {
+        # If successful global step: keep global and reinitialize counters
+        global_step = TRUE
+        n_global = n_local = 0
+      } else {
+        # If successful local step: update TR and switch to global only if local steps exhausted
+        trcontrol$sigma = min(trcontrol$alpha*trcontrol$sigma, trcontrol$maxsigma)
+        if (n_local >= max_local) {
+          global_step = TRUE
+          n_global = n_local = 0
+        }
+      }
+    } else {
+      ## Unsuccessfull step
+      if (global_step) {
+        # Unsuccessfull global step: go to local step if max_global attained
+        if (n_global >= max_global) {
+          global_step = FALSE
+          n_global = n_local = 0
+        }
+      } else {
+        # Unsuccessfull local step: update TR and go back to global step if max_local attained
+        trcontrol$sigma = trcontrol$beta*trcontrol$sigma
+        if (n_local >= max_local) {
+          global_step = TRUE
+          n_global = n_local = 0
+        }
+      }
+    }
+    if(trcontrol$sigma < trcontrol$minsigma){
+      # restart when trust region becomes too small
+      trcontrol$sigma = trcontrol$sigma0
+      n_global = n_local = 0
+      if(verb > 0) cat("restart when trust region becomes too small \n")
+    }
+    
+    if(max_global == 0){global_step = FALSE}else if(max_local == 0){global_step = TRUE}
+    
+    if(verb > 0) { 
+      cat("trcontrol: sigma=", trcontrol$sigma, " ", sep="") 
+      cat("TRlower=[", paste(signif(TRlower,3), collapse=" "), sep="")
+      cat("]; TRupper=[", paste(signif(TRupper,3), collapse=" "), "]\n", sep="")
+    }
     
     
     ## update GP fits
@@ -507,7 +528,7 @@ optim.EP = function(blackbox, B,
 }
 
 
-EP_AcqFunc = function(x, fgpi, Cgpi, ybest, rho, equal, eiey="ei")
+EP_AcqFunc = function(x, fgpi, Cgpi, epbest, rho, equal, eiey="ei")
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x)
@@ -533,7 +554,7 @@ EP_AcqFunc = function(x, fgpi, Cgpi, ybest, rho, equal, eiey="ei")
     ## Acquaisition function
     mu_ep = mu_f + rho%*%(omega*mu_C)
     sigma_ep = sqrt(sigma_f^2 + (rho^2)%*%((omega*sigma_C)^2))
-    d = (ybest - mu_ep)/sigma_ep
+    d = (epbest - mu_ep)/sigma_ep
     # # expected improvement
     # AF = sigma_ep*(d*pnorm(d) + dnorm(d))
     # AF[is.nan(AF)] = 0 # AF=NaN if sigma_ep = 0

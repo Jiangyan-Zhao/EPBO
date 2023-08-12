@@ -21,6 +21,8 @@ optim.EP(
   dg_start = c(0.1, 1e-06),
   ab = c(3/2, 8),
   dlim = sqrt(nrow(B)) * c(0.001, 10),
+  trcontrol = list(GLratio = c(1, 1), sigma = 0.2^(1/nrow(B)), maxsigma = 0.8, minsigma =
+    1/2^8, beta = 0.9, alpha = 1/0.9, kappa = 1e-04),
   verb = 2,
   ...
 )
