@@ -280,7 +280,6 @@ optim.EP = function(blackbox, B,
   scv = CV%*%rho        # weighted sum of the constraint violations
   ep = obj_norm + scv
   epbest = min(ep)      # best EP seen so far
-  scvbest = min(scv)    # best scv seen so far
   m2 = prog[start]      # best feasible solution so far
   ## best solution so far
   if(is.finite(m2)){            # if at least one feasible solution was found
@@ -385,22 +384,22 @@ optim.EP = function(blackbox, B,
     
     ## calculate composite surrogate, and evaluate SEI and/or EY
     by = "sei"
-    AF = EP_AcqFunc(cands, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey=by)
+    AF = EP_AcqFunc(cands, fgpi, Cgpi, epbest, rho, equal, eiey=by)
     m = which.max(AF)
     if(AF[m] > 1e-6){ # maximization expected improvement approach
       out = optim(par=cands[m, ], fn=EP_AcqFunc, method="L-BFGS-B",
                   lower=TRlower, upper=TRupper,
                   fgpi=fgpi, Cgpi=Cgpi, 
                   control = list(fnscale = -1), # maximization problem
-                  eiey=by, m2=m2, epbest=epbest, scvbest=scvbest, rho=rho, equal=equal)
+                  eiey=by, epbest=epbest, rho=rho, equal=equal)
     }else{# Restart optimization with minimization predictive mean approach
       by = "ey"
-      AF = EP_AcqFunc(cands, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey=by)
+      AF = EP_AcqFunc(cands, fgpi, Cgpi, epbest, rho, equal, eiey=by)
       m = which.min(AF)
       out = optim(par=cands[m, ], fn=EP_AcqFunc, method="L-BFGS-B",
                   lower=TRlower, upper=TRupper,
                   fgpi=fgpi, Cgpi=Cgpi, 
-                  eiey=by, m2=m2, epbest=epbest, scvbest=scvbest, rho=rho, equal=equal)
+                  eiey=by, epbest=epbest, rho=rho, equal=equal)
     }
 
     ## calculate next point
@@ -442,7 +441,6 @@ optim.EP = function(blackbox, B,
     scv  = CV%*%rho
     ep = obj_norm + scv
     epbest = min(ep)
-    scvbest = min(scv)
     if(is.finite(m2)){ # best solution so far
       xbest = X[which.min(prog),] 
     }else{ 
@@ -528,7 +526,7 @@ optim.EP = function(blackbox, B,
 }
 
 
-EP_AcqFunc = function(x, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey="sei")
+EP_AcqFunc = function(x, fgpi, Cgpi, epbest, rho, equal, eiey="sei")
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x)
@@ -537,14 +535,14 @@ EP_AcqFunc = function(x, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey="sei"
   ## Acquaisition function
   if(eiey == "sei"){
     ## objective
-    if(is.finite(m2)){           # if at least one valid solution was found
+    # if(is.finite(m2)){           # if at least one valid solution was found
       pred_f = predGPsep(fgpi, x, lite=TRUE)
       mu_f = pred_f$mean
       sigma_f = sqrt(pred_f$s2)
-    }else{                      # if none of the solutions are valid  
-      mu_f = sigma_f = 0
-      epbest = scvbest
-    }
+    # }else{                      # if none of the solutions are valid  
+    #   mu_f = sigma_f = 0
+    #   epbest = scvbest
+    # }
     
     ## constraints
     mu_C = sigma_C = omega = matrix(NA, nc, ncand)
@@ -570,12 +568,12 @@ EP_AcqFunc = function(x, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey="sei"
     AF[is.nan(AF)] = 0 # AF=NaN if sigma_ep = 0
   }else if(eiey == "ey"){
     ## objective
-    if(is.finite(m2)){           # if at least one valid solution was found
+    # if(is.finite(m2)){           # if at least one valid solution was found
       pred_f = predGPsep(fgpi, x, lite=TRUE)
       mu_f = pred_f$mean
-    }else{                      # if none of the solutions are valid  
-      mu_f = 0
-    }
+    # }else{                      # if none of the solutions are valid  
+    #   mu_f = 0
+    # }
     
     ## constraints
     mu_C = sigma_C = EV = matrix(NA, nc, nrow(x))

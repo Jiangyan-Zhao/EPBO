@@ -278,7 +278,6 @@ optim.EP.DiceKriging = function(blackbox, B,
   scv = CV%*%rho        # weighted sum of the constraint violations
   ep = obj_norm + scv
   epbest = min(ep)      # best EP seen so far
-  scvbest = min(scv)    # best scv seen so far
   m2 = prog[start]      # best feasible solution so far
   ## best solution so far
   if(is.finite(m2)){            # if at least one feasible solution was found
@@ -289,13 +288,17 @@ optim.EP.DiceKriging = function(blackbox, B,
   
   ## initialize objective surrogate
   fgpi = km(formula = kmcontrol$formula, design = X_unit, response = obj_norm, 
-            covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, control=list(trace=0))
+            covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
+            lower = rep(1e-3*sqrt(dim), dim), upper = rep(10*sqrt(dim), dim),
+            control=list(trace=0))
   
   ## initializing constraint surrogates
   Cgpi = vector("list", nc)
   for (j in 1:nc) {
     Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
-                   covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, control=list(trace=0))
+                   covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
+                   lower = rep(1e-3*sqrt(dim), dim), upper = rep(10*sqrt(dim), dim),
+                   control=list(trace=0))
   }
   
   ## iterating over the black box evaluations
@@ -307,12 +310,16 @@ optim.EP.DiceKriging = function(blackbox, B,
       obj_norm = (obj-fmean)/fsd
       # obj_norm = obj/max(abs(obj))
       fgpi = km(formula = kmcontrol$formula, design = X_unit, response = obj_norm, 
-                covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, control=list(trace=0))
+                covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
+                lower = rep(1e-3*sqrt(dim), dim), upper = rep(10*sqrt(dim), dim),
+                control=list(trace=0))
       
       ## constraint surrogates 
       for(j in 1:nc) {
         Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
-                       covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, control=list(trace=0))
+                       covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
+                       lower = rep(1e-3*sqrt(dim), dim), upper = rep(10*sqrt(dim), dim),
+                       control=list(trace=0))
       }
     }
     
@@ -375,22 +382,22 @@ optim.EP.DiceKriging = function(blackbox, B,
     
     ## calculate composite surrogate, and evaluate SEI and/or EY
     by = "sei"
-    AF = EP_AcqFunc_DiceKriging(cands, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey=by)
+    AF = EP_AcqFunc_DiceKriging(cands, fgpi, Cgpi, epbest, rho, equal, eiey=by)
     m = which.max(AF)
     if(AF[m] > 1e-6){ # maximization expected improvement approach
       out = optim(par=cands[m, ], fn=EP_AcqFunc_DiceKriging, method="L-BFGS-B",
                   lower=TRlower, upper=TRupper,
                   fgpi=fgpi, Cgpi=Cgpi, 
                   control = list(fnscale = -1), # maximization problem
-                  eiey=by, m2=m2, epbest=epbest, scvbest=scvbest, rho=rho, equal=equal)
+                  eiey=by, epbest=epbest, rho=rho, equal=equal)
     }else{# Restart optimization with minimization predictive mean approach
       by = "ey"
-      AF = EP_AcqFunc_DiceKriging(cands, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey=by)
+      AF = EP_AcqFunc_DiceKriging(cands, fgpi, Cgpi, epbest, rho, equal, eiey=by)
       m = which.min(AF)
       out = optim(par=cands[m, ], fn=EP_AcqFunc_DiceKriging, method="L-BFGS-B",
                   lower=TRlower, upper=TRupper,
                   fgpi=fgpi, Cgpi=Cgpi, 
-                  eiey=by, m2=m2, epbest=epbest, scvbest=scvbest, rho=rho, equal=equal)
+                  eiey=by, epbest=epbest, rho=rho, equal=equal)
     }
     
     ## calculate next point
@@ -432,7 +439,6 @@ optim.EP.DiceKriging = function(blackbox, B,
     scv  = CV%*%rho
     ep = obj_norm + scv
     epbest = min(ep)
-    scvbest = min(scv)
     if(is.finite(m2)){ # best solution so far
       xbest = X[which.min(prog),] 
     }else{ 
@@ -501,15 +507,19 @@ optim.EP.DiceKriging = function(blackbox, B,
     if(max_global == 0){global_step = FALSE}else if(max_local == 0){global_step = TRUE}
     
     ## update GP fits
-    update(fgpi, xnext_unit, obj_norm[k])
-    for(j in 1:nc) { update(Cgpi[[j]], xnext_unit, C_bilog[k,j]) }
+    fgpi = update(object = fgpi, newX = xnext_unit, newy = obj_norm[k], 
+                  cov.reestim = TRUE, newX.alreadyExist = FALSE)
+    for(j in 1:nc) { 
+      Cgpi[[j]] = update(object = Cgpi[[j]], newX = xnext_unit, newy = C_bilog[k,j], 
+                         cov.reestim = TRUE, newX.alreadyExist = FALSE) 
+    }
   }
   
   return(list(prog = prog, xbest = xbest, obj = obj, C=C, X = X, feasibility=feasibility, rho=rho, fgpi=fgpi, Cgpi=Cgpi))
 }
 
 
-EP_AcqFunc_DiceKriging = function(x, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey="sei", type="UK")
+EP_AcqFunc_DiceKriging = function(x, fgpi, Cgpi, epbest, rho, equal, eiey="sei", type="UK")
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x)
@@ -518,14 +528,9 @@ EP_AcqFunc_DiceKriging = function(x, fgpi, Cgpi, m2, epbest, scvbest, rho, equal
   ## Acquaisition function
   if(eiey == "sei"){
     ## objective
-    if(is.finite(m2)){           # if at least one valid solution was found
-      pred_f = predict(object=fgpi, newdata=x, type=type, checkNames = FALSE, light.return = TRUE)
-      mu_f = pred_f$mean
-      sigma_f = pred_f$sd
-    }else{                      # if none of the solutions are valid  
-      mu_f = sigma_f = 0
-      epbest = scvbest
-    }
+    pred_f = predict(object=fgpi, newdata=x, type=type, checkNames = FALSE, light.return = TRUE)
+    mu_f = pred_f$mean
+    sigma_f = pred_f$sd
 
     ## constraints
     mu_C = sigma_C = omega = matrix(NA, nc, ncand)
@@ -552,13 +557,9 @@ EP_AcqFunc_DiceKriging = function(x, fgpi, Cgpi, m2, epbest, scvbest, rho, equal
     AF[is.nan(AF)] = 0 # AF=NaN if sigma_ep = 0
   }else if(eiey == "ey"){ 
     ## objective
-    if(is.finite(m2)){           # if at least one valid solution was found
-      pred_f = predict(object=fgpi, newdata=x, type=type, checkNames = FALSE, light.return = TRUE, se.compute=FALSE)
-      mu_f = pred_f$mean
-    }else{                      # if none of the solutions are valid  
-      mu_f = 0
-    }
-    
+    pred_f = predict(object=fgpi, newdata=x, type=type, checkNames = FALSE, light.return = TRUE, se.compute=FALSE)
+    mu_f = pred_f$mean
+
     ## constraints
     mu_C = sigma_C = EV = matrix(NA, nc, nrow(x))
     
