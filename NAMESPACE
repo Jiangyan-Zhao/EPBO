@@ -3,6 +3,8 @@
 export(optim.AE)
 export(optim.BM)
 export(optim.EP)
+export(optim.EP.DiceKriging)
+import(DiceKriging)
 import(laGP)
 import(tgp)
 importFrom(stats,dnorm)

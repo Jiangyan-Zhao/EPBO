@@ -32,9 +32,7 @@
 #' \code{start < t <= end}, and returning the number of search candidates (e.g., for
 #' expected improvement calculations) at round \code{t}; the default setting
 #' allows the number of candidates to grow linearly with \code{t}
-#' @param dg_start 2-vector giving starting values for the lengthscale and nugget parameters
-#' of the GP surrogate model(s) for constraints
-#' @param dlim 2-vector giving bounds for the lengthscale parameter(s) under MLE inference
+#' @param kmcontrol an optional list of kriging parameters of the trust region. See "Details".
 #' @param trcontrol an optional list of control parameters of the trust region. See "Details".
 #' @param verb a non-negative integer indicating the verbosity level; the larger the value the
 #' more that is printed to the screen
@@ -60,7 +58,7 @@
 #' @keywords optimize
 #' @keywords design
 #' 
-#' @import laGP
+#' @import DiceKriging
 #' @import tgp
 #' @importFrom stats dnorm 
 #' @importFrom stats optim 
@@ -86,11 +84,11 @@
 #'   c2 = x[1]^2 + x[2]^2 - 1.5
 #'   return(list(obj=herbtooth, c=cbind(c1,c2)))
 #' }
-#' EPBO = optim.EP(HSQ, B, ncandf = function(k){ 1e3 }, start = 20, end = 120, verb = 0)
+#' EPBO.DiceKriging = optim.EP.DiceKriging(HSQ, B, ncandf = function(k){ 1e3 }, start = 20, end = 120, verb = 0)
 #' # progress, best feasible value of the objective over the trials
-#' EPBO$prog
+#' EPBO.DiceKriging$prog
 #' # the recommended solution
-#' EPBO$xbest
+#' EPBO.DiceKriging$xbest
 #' 
 #' ## Mixed constrained problem
 #' # search space
@@ -145,32 +143,32 @@
 #'   C = gsbp.constraints(X)
 #'   return(list(obj=f, c=cbind(C[,1], C[,2]/100, C[,3]/10)))
 #' }
-#' EPBO = optim.EP(gsbpprob, B, ncandf = function(k){ 1e3 }, start = 20, end = 120, 
+#' EPBO.DiceKriging = optim.EP.DiceKriging(gsbpprob, B, ncandf = function(k){ 1e3 }, start = 20, end = 120, 
 #'                 ethresh = 1e-2, equal = c(0,1,1), verb = 0)
 #'                 
 #' # progress, best feasible value of the objective over the trials
-#' EPBO$prog
+#' EPBO.DiceKriging$prog
 #' # the recommended solution
-#' EPBO$xbest
+#' EPBO.DiceKriging$xbest
 
-optim.EP = function(blackbox, B,
-                    equal=FALSE, ethresh=1e-2, 
-                    Xstart=NULL, start=10, end=100, 
-                    urate=10, rho=NULL, 
-                    ncandf=function(k) { k }, 
-                    dg_start=c(0.1*sqrt(nrow(B)), 1e-6), 
-                    dlim=sqrt(nrow(B))*c(1e-3, 10), 
-                    trcontrol=list(GLratio = c(1,1), sigma = 0.5^(1/nrow(B))/2, 
-                                   maxsigma = 0.8^(1/nrow(B)), minsigma = 1/2^8,
-                                   beta=0.5, alpha=2, kappa = 1e-4),
-                    verb=2, ...)
+optim.EP.DiceKriging = function(blackbox, B,
+                                equal=FALSE, ethresh=1e-2, 
+                                Xstart=NULL, start=10, end=100, 
+                                urate=10, rho=NULL, 
+                                ncandf=function(k) { k }, 
+                                kmcontrol=list(formula=~1, covtype="matern5_2", 
+                                               nugget=1e-6),
+                                trcontrol=list(GLratio = c(1,1), sigma = 0.5^(1/nrow(B))/2, 
+                                               maxsigma = 0.8^(1/nrow(B)), minsigma = 1/2^8,
+                                               beta=0.5, alpha=2, kappa = 1e-4),
+                                verb=2, ...)
 {
   ## check start
   if(start >= end) stop("must have start < end")
   if(start == 0 & is.null(Xstart)) stop("must have start>0 or given Xstart")
   
   dim = nrow(B) # dimension
-   
+  
   # Check trcontrol
   if (is.null(trcontrol$sigma)) trcontrol$sigma = 0.5^(1/dim)/2
   trcontrol$sigma0 = trcontrol$sigma
@@ -260,7 +258,7 @@ optim.EP = function(blackbox, B,
   fmean = mean(obj); fsd = sd(obj)
   obj_norm = (obj-fmean)/fsd       # standard normalization on objective values
   # obj_norm = obj/max(abs(obj))
-
+  
   ## handle initial rho values
   if(is.null(rho)){
     if(all(feasibility)){            # 
@@ -290,16 +288,14 @@ optim.EP = function(blackbox, B,
   }
   
   ## initialize objective surrogate
-  ab = darg(NULL, X_unit)$ab
-  fgpi = newGPsep(X_unit, obj_norm, d = dg_start[1], g = dg_start[2], dK = TRUE)
-  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
+  fgpi = km(formula = kmcontrol$formula, design = X_unit, response = obj_norm, 
+            covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, control=list(trace=0))
   
   ## initializing constraint surrogates
-  Cgpi = rep(NA, nc)
-  dc = matrix(NA, nrow=nc, ncol=dim)
+  Cgpi = vector("list", nc)
   for (j in 1:nc) {
-    Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
-    dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+    Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
+                   covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, control=list(trace=0))
   }
   
   ## iterating over the black box evaluations
@@ -307,22 +303,16 @@ optim.EP = function(blackbox, B,
     ## rebuild surrogates periodically under new normalized responses
     if(k > (start+1) && (k %% urate == 0)) {
       ## objective surrogate
-      deleteGPsep(fgpi)
-      df[df<dlim[1]] = 10*dlim[1]
-      df[df>dlim[2]] = dlim[2]/10
       fmean = mean(obj); fsd = sd(obj)
       obj_norm = (obj-fmean)/fsd
       # obj_norm = obj/max(abs(obj))
-      fgpi = newGPsep(X_unit, obj_norm, d=df, g=dg_start[2], dK=TRUE)
-      df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+      fgpi = km(formula = kmcontrol$formula, design = X_unit, response = obj_norm, 
+                covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, control=list(trace=0))
       
       ## constraint surrogates 
       for(j in 1:nc) {
-        deleteGPsep(Cgpi[j])
-        dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-        dc[j, dc[j,]>dlim[2]] = dlim[2]/10
-        Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
-        dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+        Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
+                       covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, control=list(trace=0))
       }
     }
     
@@ -385,24 +375,24 @@ optim.EP = function(blackbox, B,
     
     ## calculate composite surrogate, and evaluate SEI and/or EY
     by = "sei"
-    AF = EP_AcqFunc(cands, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey=by)
+    AF = EP_AcqFunc_DiceKriging(cands, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey=by)
     m = which.max(AF)
     if(AF[m] > 1e-6){ # maximization expected improvement approach
-      out = optim(par=cands[m, ], fn=EP_AcqFunc, method="L-BFGS-B",
+      out = optim(par=cands[m, ], fn=EP_AcqFunc_DiceKriging, method="L-BFGS-B",
                   lower=TRlower, upper=TRupper,
                   fgpi=fgpi, Cgpi=Cgpi, 
                   control = list(fnscale = -1), # maximization problem
                   eiey=by, m2=m2, epbest=epbest, scvbest=scvbest, rho=rho, equal=equal)
     }else{# Restart optimization with minimization predictive mean approach
       by = "ey"
-      AF = EP_AcqFunc(cands, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey=by)
+      AF = EP_AcqFunc_DiceKriging(cands, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey=by)
       m = which.min(AF)
-      out = optim(par=cands[m, ], fn=EP_AcqFunc, method="L-BFGS-B",
+      out = optim(par=cands[m, ], fn=EP_AcqFunc_DiceKriging, method="L-BFGS-B",
                   lower=TRlower, upper=TRupper,
                   fgpi=fgpi, Cgpi=Cgpi, 
                   eiey=by, m2=m2, epbest=epbest, scvbest=scvbest, rho=rho, equal=equal)
     }
-
+    
     ## calculate next point
     xnext_unit = matrix(out$par, nrow = 1)
     X_unit = rbind(X_unit, xnext_unit)
@@ -467,7 +457,7 @@ optim.EP = function(blackbox, B,
     
     # Update number of consecutive trial / local steps
     if(global_step){n_global = n_global + 1}else{n_local = n_local + 1}
-
+    
     
     ## Update Trust-region scheme
     if (success) {
@@ -511,24 +501,15 @@ optim.EP = function(blackbox, B,
     if(max_global == 0){global_step = FALSE}else if(max_local == 0){global_step = TRUE}
     
     ## update GP fits
-    updateGPsep(fgpi, xnext_unit, obj_norm[k], verb = verb-2)
-    df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-    
-    for(j in 1:nc) {
-      updateGPsep(Cgpi[j], xnext_unit, C_bilog[k,j], verb = verb-2)
-      dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-    }
+    update(fgpi, xnext_unit, obj_norm[k])
+    for(j in 1:nc) { update(Cgpi[[j]], xnext_unit, C_bilog[k,j]) }
   }
   
-  ## delete GP surrogates
-  deleteGPsep(fgpi)
-  for(j in 1:nc) deleteGPsep(Cgpi[j])
-  
-  return(list(prog = prog, xbest = xbest, obj = obj, C=C, X = X, feasibility=feasibility, rho=rho))
+  return(list(prog = prog, xbest = xbest, obj = obj, C=C, X = X, feasibility=feasibility, rho=rho, fgpi=fgpi, Cgpi=Cgpi))
 }
 
 
-EP_AcqFunc = function(x, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey="sei")
+EP_AcqFunc_DiceKriging = function(x, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey="sei", type="UK")
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x)
@@ -538,20 +519,21 @@ EP_AcqFunc = function(x, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey="sei"
   if(eiey == "sei"){
     ## objective
     if(is.finite(m2)){           # if at least one valid solution was found
-      pred_f = predGPsep(fgpi, x, lite=TRUE)
+      pred_f = predict(object=fgpi, newdata=x, type=type, checkNames = FALSE, light.return = TRUE)
       mu_f = pred_f$mean
-      sigma_f = sqrt(pred_f$s2)
+      sigma_f = pred_f$sd
     }else{                      # if none of the solutions are valid  
       mu_f = sigma_f = 0
       epbest = scvbest
     }
-    
+
     ## constraints
     mu_C = sigma_C = omega = matrix(NA, nc, ncand)
+    
     for (j in 1:nc) {
-      pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
+      pred_C = predict(object=Cgpi[[j]], newdata=x, type=type, checkNames = FALSE, light.return = TRUE)
       mu_C[j,] = pred_C$mean
-      sigma_C[j,] = sqrt(pred_C$s2)
+      sigma_C[j,] = pred_C$sd
       omega[j,] = (equal[j]+1)*pnorm(mu_C[j,]/sigma_C[j,]) - equal[j]
     }
     
@@ -568,10 +550,10 @@ EP_AcqFunc = function(x, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey="sei"
     denominator = pmax(.Machine$double.xmin, denominator)
     AF = numerator/sqrt(denominator)
     AF[is.nan(AF)] = 0 # AF=NaN if sigma_ep = 0
-  }else if(eiey == "ey"){
+  }else if(eiey == "ey"){ 
     ## objective
     if(is.finite(m2)){           # if at least one valid solution was found
-      pred_f = predGPsep(fgpi, x, lite=TRUE)
+      pred_f = predict(object=fgpi, newdata=x, type=type, checkNames = FALSE, light.return = TRUE, se.compute=FALSE)
       mu_f = pred_f$mean
     }else{                      # if none of the solutions are valid  
       mu_f = 0
@@ -581,9 +563,9 @@ EP_AcqFunc = function(x, fgpi, Cgpi, m2, epbest, scvbest, rho, equal, eiey="sei"
     mu_C = sigma_C = EV = matrix(NA, nc, nrow(x))
     
     for (j in 1:nc) {
-      pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
+      pred_C = predict(object=Cgpi[[j]], newdata=x, type=type, checkNames = FALSE, light.return = TRUE)
       mu_C[j,] = pred_C$mean
-      sigma_C[j,] = sqrt(pred_C$s2)
+      sigma_C[j,] = pred_C$sd
       dC = mu_C[j,]/sigma_C[j,]
       EV[j,] = mu_C[j,]*((equal[j]+1)*pnorm(dC) - equal[j]) + (equal[j]+1)*sigma_C[j,]*dnorm(dC)
     }
