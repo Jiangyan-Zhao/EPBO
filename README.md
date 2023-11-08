@@ -1,3 +1,3 @@
 # EPBO
 
-**EPBO**: Bayesian Optimization via Exact Penalty
+Code repository for "Bayesian Optimization via Exact Penalty"

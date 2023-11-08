@@ -62,7 +62,6 @@
 #' @importFrom stats optim 
 #' @importFrom stats pnorm 
 #' @importFrom stats sd
-#' @importFrom stats quantile
 #' @importFrom utils tail
 #' 
 #' @export
@@ -177,7 +176,7 @@ optim.AE = function(blackbox, B,
     cands = lhs(ncand, B)
     
     ## evaluate acquisition function
-    AF = AsyEn(cands, fgpi, fnorm, Cgpi, Cnorm, m2, blackbox, alpha1, alpha2, omega) 
+    AF = AF_AE(cands, fgpi, fnorm, Cgpi, Cnorm, m2, alpha1, alpha2, omega) 
     m = which.max(AF)
     maes = c(maes, AF[m])
     
@@ -216,35 +215,4 @@ optim.AE = function(blackbox, B,
   for(j in 1:nc) deleteGPsep(Cgpi[j])
   
   return(list(prog = prog, xbest = xbest, obj = obj, C=C, X = X))
-}
-
-AsyEn = function(cands, fgpi, fnorm, Cgpi, Cnorm, fmin, blackbox=NULL,
-                 alpha1=1, alpha2=5, omega=2/3){
-  
-  if(is.null(nrow(cands))) cands = matrix(cands, nrow=1)
-  ncand = nrow(cands)
-  nc = length(Cgpi) # number of the constraint
-  
-  ## calculate EI part
-  pred_f = predGPsep(fgpi, cands, lite=TRUE)
-  mu_f = pred_f$mean * fnorm
-  sigma_f = sqrt(pred_f$s2) * fnorm
-  if(!is.finite(fmin)) fmin = quantile(mu_f, p=0.9) # adopt the recommendation of laGP package
-  d = (fmin - mu_f)/sigma_f
-  ei = sigma_f*(d*pnorm(d) + dnorm(d))
-  
-  ## asymmetric entropy
-  PoF = matrix(NA, nrow = nrow(cands), ncol = nc)
-  for (j in 1:nc) {
-    pred_C = predGPsep(Cgpi[j], cands, lite=TRUE)
-    mu_C = pred_C$mean * Cnorm[j]
-    sigma_C = sqrt(pred_C$s2) * Cnorm[j]
-    PoF[,j] = pnorm(0, mu_C, sigma_C)
-  }
-  p = apply(PoF, 1, prod)
-  Sa = 2*p*(1-p)/(p-2*omega*p+omega^2)
-  
-  ## acquisition function
-  AF = ei^alpha1 * Sa^alpha2
-  return(AF)
 }

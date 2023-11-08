@@ -60,7 +60,7 @@
 #' @keywords optimize
 #' @keywords design
 #' 
-#' @import laGP
+#' @import DiceKriging
 #' @import tgp
 #' @importFrom stats dnorm 
 #' @importFrom stats optim 
@@ -153,19 +153,20 @@
 #' # the recommended solution
 #' EPBO$xbest
 
-optim.EP = function(blackbox, B,
-                    equal=FALSE, ethresh=1e-2, 
-                    Xstart=NULL, start=10, end=100, 
-                    urate=10, rho=NULL, 
-                    ncandf=function(k) { k }, 
-                    dg_start=c(0.1, 1e-6), 
-                    dlim=c(0.005, 4), 
-                    plotprog=FALSE,
-                    verb=2, ...)
+optim.EP.kernel = function(
+    blackbox, B, equal=FALSE, ethresh=1e-2, Xstart=NULL, start=10, end=100, 
+    urate=10, rho=NULL, ncandf=function(k) { k }, 
+    kmcontrol=list(formula=~1, covtype="matern5_2", nugget=1e-6),
+    verb=2, ...)
 {
   ## check start
   if(start >= end) stop("must have start < end")
   if(start == 0 & is.null(Xstart)) stop("must have start>0 or given Xstart")
+  
+  # Check kmcontrol
+  if (is.null(kmcontrol$formula)) kmcontrol$formula = ~1
+  if (is.null(kmcontrol$covtype)) kmcontrol$covtype = "matern5_2"
+  if (is.null(kmcontrol$nugget)) kmcontrol$nugget = 1e-6
   
   dim = nrow(B) # dimension
   # Hypercube [0, 1]^d
@@ -247,24 +248,25 @@ optim.EP = function(blackbox, B,
   }
   
   ## initialize objective surrogate
-  ab = darg(NULL, X_unit)$ab
   fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
-  fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
-  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
+  fgpi = km(formula = kmcontrol$formula, design = X_unit, response = (obj-fmean)/fsd, 
+            covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
+            lower = rep(0.005, dim), upper = rep(4, dim),
+            control=list(trace=0))
   
   ## initializing constraint surrogates
-  Cgpi = rep(NA, nc)
-  dc = matrix(NA, nrow=nc, ncol=dim)
+  Cgpi = vector("list", nc)
   for (j in 1:nc) {
-    Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
-    dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+    Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
+                   covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
+                   lower = rep(0.005, dim), upper = rep(4, dim),
+                   control=list(trace=0))
   }
   
   ## printing initial design
   if(verb > 0) {
     cat("The initial design: ")
-    cat("ab=[", paste(signif(ab,3), collapse=", "), sep="")
-    cat("]; rho=[", paste(signif(rho,3), collapse=", "), sep="")
+    cat("rho=[", paste(signif(rho,3), collapse=", "), sep="")
     cat("]; xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
     cat("]; ybest (prog=", m2, ", ep=", epbest, ")\n", sep="")
   }
@@ -276,20 +278,18 @@ optim.EP = function(blackbox, B,
     ## rebuild surrogates periodically under new normalized responses
     if(k > (start+1) && (k %% urate == 0)) {
       ## objective surrogate
-      deleteGPsep(fgpi)
-      df[df<dlim[1]] = 10*dlim[1]
-      df[df>dlim[2]] = dlim[2]/10
       fmean = mean(obj); fsd = sd(obj)
-      fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
-      df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+      fgpi = km(formula = kmcontrol$formula, design = X_unit, response = (obj-fmean)/fsd, 
+                covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
+                lower = rep(0.005, dim), upper = rep(4, dim),
+                control=list(trace=0))
       
       ## constraint surrogates 
       for(j in 1:nc) {
-        deleteGPsep(Cgpi[j])
-        dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-        dc[j, dc[j,]>dlim[2]] = dlim[2]/10
-        Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
-        dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+        Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
+                       covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
+                       lower = rep(0.005, dim), upper = rep(4, dim),
+                       control=list(trace=0))
       }
     }
     
@@ -309,26 +309,26 @@ optim.EP = function(blackbox, B,
     ncand = ncandf(k)
     cands = lhs(ncand, Hypercube) # random candidate grid
     tic = proc.time()[3] # Start time
-    AF = AF_ScaledEI(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
+    AF = AF_ScaledEI_Kernel(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
     nzsei = sum(AF > sqrt(.Machine$double.eps))
     if(0.01*ncand < nzsei && nzsei <= 0.1*ncand){
       cands = rbind(cands, lhs(10*ncand, Hypercube))
-      AF = c(AF, AF_ScaledEI(cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal))
+      AF = c(AF, AF_ScaledEI_Kernel(cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal))
       nzsei = sum(AF > sqrt(.Machine$double.eps))
       ncand = 11*ncand
     }
     if(nzsei <= 0.01*ncand){ # minimize predictive mean approach
       by = "ey"
-      AF = AF_EY(cands, fgpi, fmean, fsd, Cgpi, rho, equal)
+      AF = AF_EY_Kernel(cands, fgpi, fmean, fsd, Cgpi, rho, equal)
       m = which.min(AF)
-      out_AF = optim(par=cands[m, ], fn=AF_EY, method="L-BFGS-B",
+      out_AF = optim(par=cands[m, ], fn=AF_EY_Kernel, method="L-BFGS-B",
                      lower=0, upper=1,
                      fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
                      rho=rho, equal=equal)
     }else{# maximize scaled expected improvement approach
       by = "sei"
       m = which.max(AF)
-      out_AF = optim(par=cands[m, ], fn=AF_ScaledEI, method="L-BFGS-B",
+      out_AF = optim(par=cands[m, ], fn=AF_ScaledEI_Kernel, method="L-BFGS-B",
                      lower=0, upper=1,
                      fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
                      control = list(fnscale = -1), # maximization problem
@@ -389,57 +389,15 @@ optim.EP = function(blackbox, B,
     }
     
     ## update GP fits
-    updateGPsep(fgpi, xnext_unit, (obj[k]-fmean)/fsd, verb = verb-2)
-    df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-    
-    for(j in 1:nc) {
-      updateGPsep(Cgpi[j], xnext_unit, C_bilog[k,j], verb = verb-2)
-      dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-    }
-    
-    ## plot progress
-    if(plotprog) {
-      par(mfrow=c(2,2))
-      ## progress
-      if(is.finite(m2)){
-        plot(prog, type="l", main="progress")
-      }else{
-        plot(prog, type="l", ylim=range(obj), main="progress")
-      }
-      ## acquisition function
-      cands_unnormalize = unnormalize(cands, B)
-      span = ifelse(length(AF) < 30, 0.5, 0.1)
-      graphic = interp.loess(cands_unnormalize[,1], cands_unnormalize[,2], 
-                             as.vector(AF), span=span)
-      image(graphic, xlim=range(X[,1]), ylim=range(X[,2]), main=by)
-      points(X[1:start,1:2], col=feasibility[1:start]+3)
-      points(X[-(1:start),1:2, drop=FALSE], col=feasibility[-(1:start)]+3, pch=19)
-      points(X[k,,drop=FALSE], col="red", pch=18, cex=1.5)
-      ## mean of objective function
-      pred_f = predGPsep(fgpi, cands, lite=TRUE)
-      mu_f = pred_f$mean * fsd + fmean
-      sigma_f = sqrt(pred_f$s2) * fsd
-      graphic = interp.loess(cands_unnormalize[,1], cands_unnormalize[,2],
-                             mu_f, span=span)
-      image(graphic, xlim=range(X[,1]), ylim=range(X[,2]), main="mu_f")
-      points(X[1:start,1:2], col=feasibility[1:start]+3)
-      points(X[-(1:start),1:2, drop=FALSE], col=feasibility[-(1:start)]+3, pch=19)
-      points(X[k,,drop=FALSE], col="red", pch=18, cex=1.5)
-      ## standard deviation of objective function
-      graphic = interp.loess(cands_unnormalize[,1], cands_unnormalize[,2],
-                             sigma_f, span=span)
-      image(graphic, xlim=range(X[,1]), ylim=range(X[,2]), main="sd_f")
-      points(X[1:start,1:2], col=feasibility[1:start]+3)
-      points(X[-(1:start),1:2, drop=FALSE], col=feasibility[-(1:start)]+3, pch=19)
-      points(X[k,,drop=FALSE], col="red", pch=18, cex=1.5)
+    fgpi = update(object = fgpi, newX = xnext_unit, newy = (obj[k]-fmean)/fsd, 
+                  cov.reestim = TRUE, newX.alreadyExist = FALSE)
+    for(j in 1:nc) { 
+      Cgpi[[j]] = update(object = Cgpi[[j]], newX = xnext_unit, newy = C_bilog[k,j], 
+                         cov.reestim = TRUE, newX.alreadyExist = FALSE) 
     }
   }
-  
-  ## delete GP surrogates
-  deleteGPsep(fgpi)
-  for(j in 1:nc) deleteGPsep(Cgpi[j])
-  
+
   return(list(prog = prog, xbest = xbest, 
-              obj = obj, C=C, X = X, 
+              obj = obj, C=C, X = X, fgpi=fgpi, Cgpi=Cgpi,
               feasibility=feasibility, rho=rho, AF_time=AF_time))
 }

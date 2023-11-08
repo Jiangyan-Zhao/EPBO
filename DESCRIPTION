@@ -1,7 +1,7 @@
 Package: EPBO
-Title: Constrained Bayesian Optimization via Exact Penalty
-Version: 0.0.1
-Date: 2023-08-14
+Title: Bayesian Optimization via Exact Penalty
+Version: 0.0.9
+Date: 2023-11-03
 Authors@R: 
   person(given = "Jiangyan", 
          family = "Zhao", 
@@ -16,7 +16,7 @@ Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.3
-Imports: laGP, tgp, DiceKriging
+Imports: laGP, tgp, DiceKriging, matrixStats, mvtnorm
 Depends: R (>= 2.14)
 Suggests: 
     stats,
