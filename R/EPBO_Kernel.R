@@ -240,6 +240,7 @@ optim.EP.kernel = function(
   ep = obj + scv        # the EP values
   epbest = min(ep)      # best EP seen so far
   m2 = prog[start]      # BOFV
+  since = 0
   ## best solution so far
   if(is.finite(m2)){            # if at least one feasible solution was found
     xbest = X[which.min(prog),] 
@@ -251,7 +252,7 @@ optim.EP.kernel = function(
   fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
   fgpi = km(formula = kmcontrol$formula, design = X_unit, response = (obj-fmean)/fsd, 
             covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
-            lower = rep(0.005, dim), upper = rep(4, dim),
+            lower = rep(1e-4, dim), upper = rep(10, dim),
             control=list(trace=0))
   
   ## initializing constraint surrogates
@@ -259,7 +260,7 @@ optim.EP.kernel = function(
   for (j in 1:nc) {
     Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
                    covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
-                   lower = rep(0.005, dim), upper = rep(4, dim),
+                   lower = rep(1e-4, dim), upper = rep(10, dim),
                    control=list(trace=0))
   }
   
@@ -268,7 +269,7 @@ optim.EP.kernel = function(
     cat("The initial design: ")
     cat("rho=[", paste(signif(rho,3), collapse=", "), sep="")
     cat("]; xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
-    cat("]; ybest (prog=", m2, ", ep=", epbest, ")\n", sep="")
+    cat("]; ybest (prog=", m2, ", ep=", epbest, ", since=", since, ")\n", sep="")
   }
   
   AF_time = 0 # AF running time
@@ -281,14 +282,14 @@ optim.EP.kernel = function(
       fmean = mean(obj); fsd = sd(obj)
       fgpi = km(formula = kmcontrol$formula, design = X_unit, response = (obj-fmean)/fsd, 
                 covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
-                lower = rep(0.005, dim), upper = rep(4, dim),
+                lower = rep(1e-4, dim), upper = rep(10, dim),
                 control=list(trace=0))
       
       ## constraint surrogates 
       for(j in 1:nc) {
         Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
                        covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
-                       lower = rep(0.005, dim), upper = rep(4, dim),
+                       lower = rep(1e-4, dim), upper = rep(10, dim),
                        control=list(trace=0))
       }
     }
@@ -311,7 +312,7 @@ optim.EP.kernel = function(
     tic = proc.time()[3] # Start time
     AF = AF_ScaledEI_Kernel(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
     nzsei = sum(AF > sqrt(.Machine$double.eps))
-    if(0.01*ncand < nzsei && nzsei <= 0.1*ncand){
+    if(since > 10 || (0.01*ncand < nzsei && nzsei <= 0.1*ncand)){
       cands = rbind(cands, lhs(10*ncand, Hypercube))
       AF = c(AF, AF_ScaledEI_Kernel(cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal))
       nzsei = sum(AF > sqrt(.Machine$double.eps))
@@ -353,8 +354,9 @@ optim.EP.kernel = function(
     
     ## check if best valid has changed
     feasibility = c(feasibility, all(out$c[!equal] <= 0) && all(abs(out$c[equal]) <= ethresh))
+    since = since + 1
     if(feasibility[k] && fnext < prog[k-1]) {
-      m2 = fnext
+      m2 = fnext; since = 0
     } # otherwise m2 unchanged; should be the same as prog[k-1]
     prog = c(prog, m2)
     
@@ -385,7 +387,7 @@ optim.EP.kernel = function(
       cat("; xnext ([", paste(signif(xnext,3), collapse=" "), 
           "], feasibility=", feasibility[k], ")\n", sep="")
       cat(" xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
-      cat("]; ybest (prog=", m2, ", ep=", epbest, ")\n", sep="")
+      cat("]; ybest (prog=", m2, ", ep=", epbest, ", since=", since, ")\n", sep="")
     }
     
     ## update GP fits

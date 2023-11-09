@@ -28,6 +28,10 @@
 #' parameter(s) 
 #' @param rho positive vector initial exact penalty parameter in the exact penalty function; 
 #' the default setting of \code{rho = NULL} causes an automatic starting value to be chosen
+#' @param ncandf function taking a single integer indicating the optimization trial number \code{t}, where
+#' \code{start < t <= end}, and returning the number of search candidates (e.g., for
+#' expected improvement calculations) at round \code{t}; the default setting
+#' allows the number of candidates to grow linearly with \code{t}
 #' @param dg_start 2-vector giving starting values for the lengthscale and nugget parameters
 #' of the GP surrogate model(s) for constraints
 #' @param dlim 2-vector giving bounds for the lengthscale parameter(s) under MLE inference
@@ -154,13 +158,17 @@ optim.EP4HD = function(blackbox, B,
                        Xstart=NULL, start=10, end=100, 
                        urate=10, rho=NULL, 
                        dg_start=c(0.1, 1e-6), 
-                       dlim=c(0.005, 4), 
-                       ncand=min(5000, max(2000, 200*nrow(B))),
+                       dlim=c(1e-4, 10), 
+                       ncandf=function(k) { k },
+                       # ncand=min(5000, max(2000, 200*nrow(B))),
                        batch_size=1,
                        trcontrol=list(
                          length=0.8, length_min=0.5^7, length_max=1.6,
                          failure_counter=0, failure_tolerance=max(4, nrow(B)),
                          success_counter=0, success_tolerance=3),
+                       plotprog=FALSE,
+                       opt=TRUE,
+                       ey.tol=1e-2, AF.tol=sqrt(.Machine$double.eps),
                        verb=2, ...)
 {
   ## check start
@@ -177,7 +185,7 @@ optim.EP4HD = function(blackbox, B,
   if (is.null(trcontrol$failure_tolerance)) trcontrol$failure_tolerance =  max(4, dim)
   if (is.null(trcontrol$success_counter)) trcontrol$success_counter = 0
   if (is.null(trcontrol$success_tolerance)) trcontrol$success_tolerance = 3
-  
+
   # Hypercube [0, 1]^d
   Hypercube = matrix(c(rep(0,dim), rep(1,dim)), ncol=2) 
   
@@ -231,18 +239,13 @@ optim.EP4HD = function(blackbox, B,
     prog[k] = ifelse(feasibility[k] && obj[k] < prog[k-1], obj[k], prog[k-1]) 
   }
   
-  ## handle initial rho value
-  fmean = mean(obj); fsd = sd(obj)
-  obj_norm = (obj-fmean)/fsd       # standard normalization on objective values
-  # obj_norm = obj/max(abs(obj))
-  
   ## handle initial rho values
   if(is.null(rho)){
     if(all(feasibility)){            # 
-      rho = rep(1e-6, nc)
+      rho = rep(0, nc)
     }else {
       ECV = colMeans(CV) # averaged CV
-      rho = mean(abs(obj_norm)) * ECV/sum(ECV^2)
+      rho = mean(abs(obj)) * ECV/sum(ECV^2)
     }
     if(any(equal)) rho[equal] = pmax(1/ethresh/sum(equal), rho[equal])
   }else{
@@ -251,28 +254,22 @@ optim.EP4HD = function(blackbox, B,
   
   ## calculate EP for data seen so far
   scv = CV%*%rho        # weighted sum of the constraint violations
-  ep = obj_norm + scv
+  ep = obj + scv        # the EP values
   epbest = min(ep)      # best EP seen so far
-  m2 = prog[start]      # best feasible solution so far
-  # best solution so far
+  m2 = prog[start]      # BOFV
+  since = 0
+  ## best solution so far
   if(is.finite(m2)){            # if at least one feasible solution was found
-    xbest = X[which.min(prog),]
+    xbest = X[which.min(prog),] 
   }else{                        # if none of the solutions are feasible
-    xbest = X[which.min(scv),]
+    xbest = X[which.min(scv),] 
   }
   xbest_unit = as.vector(normalize(xbest, B))
   
-  ## printing initial design
-  if(verb > 0) {
-    cat("The initial design: ")
-    cat("rho=[", paste(signif(rho,3), collapse=", "), sep="")
-    cat("]; xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
-    cat("]; ybest (prog=", m2, ", ep=", epbest, ")\n", sep="")
-  }
-  
   ## initialize objective surrogate
   ab = darg(NULL, X_unit)$ab
-  fgpi = newGPsep(X_unit, obj_norm, d = dg_start[1], g = dg_start[2], dK = TRUE)
+  fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
+  fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
   df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
   
   ## initializing constraint surrogates
@@ -283,6 +280,16 @@ optim.EP4HD = function(blackbox, B,
     dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
   }
   
+  ## printing initial design
+  if(verb > 0) {
+    cat("The initial design: ")
+    cat("ab=[", paste(signif(ab,3), collapse=", "), sep="")
+    cat("]; rho=[", paste(signif(rho,3), collapse=", "), sep="")
+    cat("]; xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
+    cat("]; ybest (prog=", m2, ", ep=", epbest, ", since=", since, ")\n", sep="")
+  }
+  
+  AF_time = 0 # AF running time
   
   ## iterating over the black box evaluations
   for (k in (start+1):end) {
@@ -293,8 +300,7 @@ optim.EP4HD = function(blackbox, B,
       df[df<dlim[1]] = 10*dlim[1]
       df[df>dlim[2]] = dlim[2]/10
       fmean = mean(obj); fsd = sd(obj)
-      obj_norm = (obj-fmean)/fsd
-      fgpi = newGPsep(X_unit, obj_norm, d=df, g=dg_start[2], dK=TRUE)
+      fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
       df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
       
       ## constraint surrogates 
@@ -309,26 +315,24 @@ optim.EP4HD = function(blackbox, B,
     
     
     ## Update the rho when the smallest EP is not feasible
-    if(is.finite(m2)){
-      ck = C[which.min(ep),]
-      invalid = rep(NA, nc)
-      invalid[!equal] = (ck[!equal] > 0); invalid[equal] = (abs(ck[equal]) > ethresh)
-      nupdate = 0
-      while(any(invalid) && nupdate<=5){
-        rho[invalid] = rho[invalid]*2
-        scv = CV%*%rho
-        ep = obj_norm + scv
-        ck = C[which.min(ep),]
-        invalid[!equal] = (ck[!equal] > 0); invalid[equal] = (abs(ck[equal]) > ethresh)
-        nupdate = nupdate + 1
-      }
-      epbest = min(ep)
+    ck = C[which.min(ep),]
+    invalid = rep(NA, nc)
+    invalid[!equal] = (ck[!equal] > 0); invalid[equal] = (abs(ck[equal]) > ethresh)
+    if(any(invalid) && is.finite(m2)){
+      rho[invalid] = rho[invalid]*2
+      scv = CV%*%rho; ep = obj + scv; epbest = min(ep)
+      if(verb > 0) cat(" the smallest EP is not feasible, updating rho=(", 
+                       paste(signif(rho,3), collapse=", "), ")\n", sep="")
     }
     
     ## random candidate grid
-    TRlower = pmax(xbest_unit - trcontrol$length/2, 0)
-    TRupper = pmin(xbest_unit + trcontrol$length/2, 1)
+    weights = colMeans(rbind(df, dc))
+    weights = weights / mean(weights)
+    weights = weights / prod(weights)^(1/dim)
+    TRlower = pmax(xbest_unit - weights*trcontrol$length/2, 0)
+    TRupper = pmin(xbest_unit + weights*trcontrol$length/2, 1)
     TRspace = cbind(TRlower, TRupper)
+    ncand = ncandf(k)
     if(dim <= 20){
       cands = lhs(ncand, TRspace)
     }else{
@@ -345,48 +349,70 @@ optim.EP4HD = function(blackbox, B,
     if(verb > 0) { 
       cat("k=", k, sep="")
       cat(" trcontrol(length=", trcontrol$length, sep="") 
-      cat(", lower=[", paste(signif(unnormalize(TRlower, B),3), collapse=" "), sep="")
+      cat(", weights=[", paste(signif(weights, 3), collapse=" "), sep="") 
+      cat("], lower=[", paste(signif(unnormalize(TRlower, B),3), collapse=" "), sep="")
       cat("], upper=[", paste(signif(unnormalize(TRupper, B),3), collapse=" "), "])\n", sep="")
     }
     
     ## calculate composite surrogate, and evaluate SEI and/or EY
-    # AF = AF_ScaledEI(cands, fgpi, Cgpi, epbest, rho, equal)
-    # nzsei = sum(AF > sqrt(.Machine$double.eps))
-    # if(nzsei <= 0.01*ncand){ # minimize predictive mean approach
-    #   by = "ey"
-    #   AF = AF_EY(cands, fgpi, Cgpi, rho, equal)
-    #   m = which.min(AF)
-    #   out = optim(par=cands[m, ], fn=AF_EY, method="L-BFGS-B",
-    #               lower=TRlower, upper=TRupper,
-    #               fgpi=fgpi, Cgpi=Cgpi,
-    #               rho=rho, equal=equal)
-    # }else if(nzsei <= 0.1*ncand){# maximize scaled expected improvement approach
-    #   by = "sei"
-    #   cands = rbind(cands, lhs(10*ncand, Hypercube))
-    #   AF = c(AF, AF_ScaledEI(cands[-(1:ncand),], fgpi, Cgpi, epbest, rho, equal))
-    #   m = which.max(AF)
-    #   out = optim(par=cands[m, ], fn=AF_ScaledEI, method="L-BFGS-B",
-    #               lower=TRlower, upper=TRupper,
-    #               fgpi=fgpi, Cgpi=Cgpi,
-    #               control = list(fnscale = -1), # maximization problem
-    #               epbest=epbest, rho=rho, equal=equal)
-    # }else{# maximize scaled expected improvement approach
-    #   by = "sei"
-    #   m = which.max(AF)
-    #   out = optim(par=cands[m, ], fn=AF_ScaledEI, method="L-BFGS-B",
-    #               lower=TRlower, upper=TRupper,
-    #               fgpi=fgpi, Cgpi=Cgpi, 
-    #               control = list(fnscale = -1), # maximization problem
-    #               epbest=epbest, rho=rho, equal=equal)
-    # }
+    tic = proc.time()[3] # Start time
+    if(since > 1 && since %% 5 == 0){ # maximize variance approach
+      by = "Var"
+      TRlower = pmax(xbest_unit - weights*trcontrol$length, 0)
+      TRupper = pmin(xbest_unit + weights*trcontrol$length, 1)
+      TRspace = cbind(TRlower, TRupper)
+      cands = lhs(ncand, TRspace)
+      AF = predGPsep(fgpi, cands, lite=TRUE)$s2
+      m = which.max(AF)
+      out_AF = list(par=cands[m, ], value=max(AF))
+    }else{
+      AF = AF_ScaledEI(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
+      nzsei = sum(AF > AF.tol)
+      if(since > 10 || (ey.tol*ncand < nzsei && nzsei <= 0.1*ncand)){
+        cands = rbind(cands, lhs(10*ncand, TRspace))
+        AF = c(AF, AF_ScaledEI(cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal))
+        nzsei = sum(AF > AF.tol)
+        ncand = 11*ncand
+      }
+      if(nzsei <= ey.tol*ncand){ # minimize predictive mean approach
+        by = "ey"
+        AF = AF_EY(cands, fgpi, fmean, fsd, Cgpi, rho, equal)
+        m = which.min(AF)
+        if(opt){
+          out_AF = optim(par=cands[m, ], fn=AF_EY, method="L-BFGS-B",
+                         lower=TRlower, upper=TRupper,
+                         fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
+                         rho=rho, equal=equal)
+        }else{ out_AF = list(par=cands[m, ], value=min(AF)) }
+      }else{ # maximize scaled expected improvement approach
+        by = "sei"
+        m = which.max(AF)
+        if(opt){
+          out_AF = optim(par=cands[m, ], fn=AF_ScaledEI, method="L-BFGS-B",
+                         lower=TRlower, upper=TRupper,
+                         fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
+                         control = list(fnscale = -1), # maximization problem
+                         epbest=epbest, rho=rho, equal=equal)
+        }else{ out_AF = list(par=cands[m, ], value=min(AF)) }
+        # if(verb>0){
+        #   cat("out_AF(value=", out_AF$value, "par=[", 
+        #       paste(signif(out_AF$par,3), collapse=" "), "]\n")
+        #   cat("max_AF(value=", max(AF), "par=[", 
+        #       paste(signif(cands[m, ],3), collapse=" "), "]\n")
+        # }
+      }
+    }
+    toc = proc.time()[3] # End time
+    AF_time = AF_time + toc - tic # AF running time
     
-    AF = AF_TS(cands, fgpi, Cgpi, rho, equal)
-    by = "TS"
-    m = which.min(AF)
-    out = list(par=cands[m,])
+    
+    # AF = AF_TS(cands, fgpi, Cgpi, rho, equal)
+    # by = "TS"
+    # m = which.min(AF)
+    # out = list(par=cands[m,])
     
     ## calculate next point
-    xnext_unit = matrix(out$par, nrow = 1)
+    xnext_unit = matrix(out_AF$par, nrow = 1)
     X_unit = rbind(X_unit, xnext_unit)
     xnext = unnormalize(xnext_unit, B)
     X = rbind(X, xnext)
@@ -394,8 +420,6 @@ optim.EP4HD = function(blackbox, B,
     ## new run
     out = blackbox(xnext, ...)
     fnext = out$obj; obj = c(obj, fnext); C = rbind(C, out$c)
-    obj_norm = (obj-fmean)/fsd
-    # obj_norm = obj/max(abs(obj))
     C_bilog = rbind(C_bilog, bilog(out$c))
     CV = rbind(CV, rep(NA, nc))
     CV[k, !equal] = pmax(0, C_bilog[k, !equal]) # constraint violations for inequality
@@ -403,44 +427,41 @@ optim.EP4HD = function(blackbox, B,
     
     ## check if best valid has changed
     feasibility = c(feasibility, all(out$c[!equal] <= 0) && all(abs(out$c[equal]) <= ethresh))
+    since = since + 1
     if(feasibility[k] && fnext < prog[k-1]) {
-      m2 = fnext
+      m2 = fnext; since = 0
     } # otherwise m2 unchanged; should be the same as prog[k-1]
     prog = c(prog, m2)
     
     ## rho update
     if(all(feasibility)){ # 
-      rho_new = rep(1e-6, nc)
+      rho_new = rep(0, nc)
     }else {
       ECV = colMeans(CV)
-      rho_new = mean(abs(obj_norm)) * ECV/sum(ECV^2)
+      rho_new = mean(abs(obj)) * ECV/sum(ECV^2)
     }
     if(verb > 0 && any(rho_new > rho)){ # printing progress
-      cat("     updating rho=(", 
-          paste(signif(pmax(rho_new, rho),3), collapse=", "), ")\n", sep="")
+      cat("  updating rho=(", paste(signif(pmax(rho_new, rho),3), collapse=", "), ")\n", sep="")
     }
     rho = pmax(rho_new, rho)
     
     ## calculate EP for data seen so far
-    scv  = CV%*%rho
-    ep = obj_norm + scv
-    epbest = min(ep)
+    scv  = CV%*%rho; ep = obj + scv; epbest = min(ep)
     if(is.finite(m2)){ # best solution so far
-      xbest = X[which.min(prog),]
-    }else{
-      xbest = X[which.min(scv),]
+      xbest = X[which.min(prog),] 
+    }else{ 
+      xbest = X[which.min(scv),] 
     }
     xbest_unit = as.vector(normalize(xbest, B))
     
     ## progress meter
     if(verb > 0) {
-      cat("     ", by, "=", AF[m], sep="")
+      cat("  ", by, "=", out_AF$value, ", ncand=", ncand, sep="")
       cat("; xnext ([", paste(signif(xnext,3), collapse=" "), 
           "], feasibility=", feasibility[k], ")\n", sep="")
-      cat("     xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
-      cat("]; ybest (prog=", m2, ", ep=", epbest, ")\n", sep="")
+      cat(" xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
+      cat("]; ybest (prog=", m2, ", ep=", epbest, ", since=", since, ")\n", sep="")
     }
-    
     
     ## update the control parameter of trust region 
     if(is.finite(m2)){ 
@@ -493,12 +514,49 @@ optim.EP4HD = function(blackbox, B,
     }
     
     ## update GP fits
-    updateGPsep(fgpi, xnext_unit, obj_norm[k], verb = verb-2)
+    updateGPsep(fgpi, xnext_unit, (obj[k]-fmean)/fsd, verb = verb-2)
     df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
     
     for(j in 1:nc) {
       updateGPsep(Cgpi[j], xnext_unit, C_bilog[k,j], verb = verb-2)
       dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+    }
+    
+    ## plot progress
+    if(plotprog) {
+      par(mfrow=c(2,2))
+      ## progress
+      if(is.finite(m2)){
+        plot(prog, type="l", main="progress")
+      }else{
+        plot(prog, type="l", ylim=range(obj), main="progress")
+      }
+      ## acquisition function
+      cands_unnormalize = unnormalize(cands, B)
+      span = ifelse(length(AF) < 30, 0.5, 0.1)
+      graphic = interp.loess(cands_unnormalize[,1], cands_unnormalize[,2], 
+                             as.vector(AF), span=span)
+      image(graphic, xlim=range(X[,1]), ylim=range(X[,2]), main=by)
+      points(X[1:start,1:2], col=feasibility[1:start]+3)
+      points(X[-(1:start),1:2, drop=FALSE], col=feasibility[-(1:start)]+3, pch=19)
+      points(X[k,,drop=FALSE], col="red", pch=18, cex=1.5)
+      ## mean of objective function
+      pred_f = predGPsep(fgpi, cands, lite=TRUE)
+      mu_f = pred_f$mean * fsd + fmean
+      sigma_f = sqrt(pred_f$s2) * fsd
+      graphic = interp.loess(cands_unnormalize[,1], cands_unnormalize[,2],
+                             mu_f, span=span)
+      image(graphic, xlim=range(X[,1]), ylim=range(X[,2]), main="mu_f")
+      points(X[1:start,1:2], col=feasibility[1:start]+3)
+      points(X[-(1:start),1:2, drop=FALSE], col=feasibility[-(1:start)]+3, pch=19)
+      points(X[k,,drop=FALSE], col="red", pch=18, cex=1.5)
+      ## standard deviation of objective function
+      graphic = interp.loess(cands_unnormalize[,1], cands_unnormalize[,2],
+                             sigma_f, span=span)
+      image(graphic, xlim=range(X[,1]), ylim=range(X[,2]), main="sd_f")
+      points(X[1:start,1:2], col=feasibility[1:start]+3)
+      points(X[-(1:start),1:2, drop=FALSE], col=feasibility[-(1:start)]+3, pch=19)
+      points(X[k,,drop=FALSE], col="red", pch=18, cex=1.5)
     }
   }
   
@@ -508,5 +566,5 @@ optim.EP4HD = function(blackbox, B,
   
   return(list(prog = prog, xbest = xbest, 
               obj = obj, C=C, X = X, 
-              feasibility=feasibility, rho=rho))
+              feasibility=feasibility, rho=rho, AF_time=AF_time))
 }
