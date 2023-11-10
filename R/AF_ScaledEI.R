@@ -69,5 +69,6 @@ AF_ScaledEI = function(x, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
   VI = pmax(.Machine$double.xmin, VI)
   ScaledEI = EI/sqrt(VI) # Scaled expected improvement
   # ScaledEI[d < -6] = 0
+  ScaledEI[is.nan(ScaledEI)] = 0
   return(ScaledEI)
 }

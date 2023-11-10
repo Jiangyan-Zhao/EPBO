@@ -68,6 +68,6 @@ AF_ScaledEI_Kernel = function(x, fgpi, fmean, fsd, Cgpi, epbest, rho, equal, typ
   VI = pnorm(d) + d*EI - EI^2 # variance of the improvement (remove sigma_ep)
   VI = pmax(.Machine$double.xmin, VI)
   ScaledEI = EI/sqrt(VI) # Scaled expected improvement
-  # ScaledEI[d <= -6] = 0
+  ScaledEI[is.nan(ScaledEI)] = 0
   return(ScaledEI)
 }
