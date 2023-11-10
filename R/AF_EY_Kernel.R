@@ -8,8 +8,6 @@
 #' 
 #' @param Cgpi description
 #' 
-#' @param epbest description
-#' 
 #' @param rho description
 #' 
 #' @param equal an optional vector containing zeros and ones, whose length equals the number of
@@ -34,7 +32,7 @@
 #' 
 #' 
 
-AF_EY_Kernel = function(x, fgpi, fmean, fsd, Cgpi, epbest, rho, equal, type="UK")
+AF_EY_Kernel = function(x, fgpi, fmean, fsd, Cgpi, rho, equal, type="UK")
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x) # number of the candidate points
