@@ -312,7 +312,8 @@ optim.EP.kernel = function(
     tic = proc.time()[3] # Start time
     AF = AF_ScaledEI_Kernel(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
     nzsei = sum(AF > sqrt(.Machine$double.eps))
-    if(since > 10 || (0.01*ncand < nzsei && nzsei <= 0.1*ncand)){
+    # Augment the candidate points
+    if(0.01*ncand < nzsei && nzsei <= 0.1*ncand){
       cands = rbind(cands, lhs(10*ncand, Hypercube))
       AF = c(AF, AF_ScaledEI_Kernel(cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal))
       nzsei = sum(AF > sqrt(.Machine$double.eps))

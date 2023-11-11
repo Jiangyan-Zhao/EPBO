@@ -310,7 +310,8 @@ optim.EP = function(
     tic = proc.time()[3] # Start time
     AF = AF_ScaledEI(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
     nzsei = sum(AF > AF_tol)
-    if(since > 10 || (ey_tol*ncand < nzsei && nzsei <= 0.1*ncand)){
+    # Augment the candidate points
+    if(ey_tol*ncand < nzsei && nzsei <= 0.1*ncand){
       cands = rbind(cands, lhs(10*ncand, Hypercube))
       AF = c(AF, AF_ScaledEI(cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal))
       nzsei = sum(AF > AF_tol)

@@ -316,7 +316,8 @@ optim.EP.MC = function(blackbox, B,
     tic = proc.time()[3] # Start time
     AF = AF_ScaledEI_MC(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal, N)
     nzsei = sum(AF > sqrt(.Machine$double.eps))
-    if(since > 10 || (0.01*ncand < nzsei && nzsei <= 0.1*ncand)){
+    # Augment the candidate points
+    if(0.01*ncand < nzsei && nzsei <= 0.1*ncand){
       cands = rbind(cands, lhs(10*ncand, Hypercube))
       AF = c(AF, AF_ScaledEI_MC(
         cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal, N))
