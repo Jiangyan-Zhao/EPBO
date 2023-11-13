@@ -356,14 +356,21 @@ optim.EP4HD = function(blackbox, B,
     
     ## calculate composite surrogate, and evaluate SEI and/or EY
     tic = proc.time()[3] # Start time
-    if(since > 1 && since %% 5 == 0){ # maximize variance approach
+    if(since > 5 && since %% 2 == 0){ # maximize constrained variance approach
       by = "Var"
-      TRlower = pmax(xbest_unit - weights*trcontrol$length, 0)
-      TRupper = pmin(xbest_unit + weights*trcontrol$length, 1)
+      length.var = pmax(0.1, weights*trcontrol$length)
+      TRlower = pmax(xbest_unit - length.var/2, 0)
+      TRupper = pmin(xbest_unit + length.var/2, 1)
       TRspace = cbind(TRlower, TRupper)
       cands = lhs(ncand, TRspace)
-      AF = predGPsep(fgpi, cands, lite=TRUE)$s2
+      AF = AF_ConVar(cands, fgpi, Cgpi, equal)
       m = which.max(AF)
+      # if(opt && max(AF) > AF.tol){
+      #   out_AF = optim(par=cands[m, ], fn=AF_ConVar, method="L-BFGS-B",
+      #                  lower=TRlower, upper=TRupper,
+      #                  control = list(fnscale = -1), # maximization problem
+      #                  fgpi=fgpi, Cgpi=Cgpi, equal=equal)
+      # }else{ out_AF = list(par=cands[m, ], value=max(AF)) }
       out_AF = list(par=cands[m, ], value=max(AF))
     }else{
       AF = AF_ScaledEI(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
