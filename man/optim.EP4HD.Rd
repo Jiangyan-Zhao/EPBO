@@ -15,11 +15,17 @@ optim.EP4HD(
   urate = 10,
   rho = NULL,
   dg_start = c(0.1, 1e-06),
-  dlim = c(0.005, 4),
-  ncand = min(5000, max(2000, 200 * nrow(B))),
+  dlim = c(1e-04, 10),
+  ncandf = function(k) {
+     k
+ },
   batch_size = 1,
   trcontrol = list(length = 0.8, length_min = 0.5^7, length_max = 1.6, failure_counter =
     0, failure_tolerance = max(4, nrow(B)), success_counter = 0, success_tolerance = 3),
+  plotprog = FALSE,
+  opt = TRUE,
+  ey.tol = 0.01,
+  AF.tol = sqrt(.Machine$double.eps),
   verb = 2,
   ...
 )
@@ -64,6 +70,11 @@ the default setting of \code{rho = NULL} causes an automatic starting value to b
 of the GP surrogate model(s) for constraints}
 
 \item{dlim}{2-vector giving bounds for the lengthscale parameter(s) under MLE inference}
+
+\item{ncandf}{function taking a single integer indicating the optimization trial number \code{t}, where
+\code{start < t <= end}, and returning the number of search candidates (e.g., for
+expected improvement calculations) at round \code{t}; the default setting
+allows the number of candidates to grow linearly with \code{t}}
 
 \item{verb}{a non-negative integer indicating the verbosity level; the larger the value the
 more that is printed to the screen}

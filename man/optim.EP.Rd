@@ -18,8 +18,10 @@ optim.EP(
      k
  },
   dg_start = c(0.1, 1e-06),
-  dlim = c(0.005, 4),
+  dlim = c(1e-04, 10),
   plotprog = FALSE,
+  ey_tol = 0.01,
+  AF_tol = sqrt(.Machine$double.eps),
   verb = 2,
   ...
 )

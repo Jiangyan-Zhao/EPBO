@@ -156,19 +156,28 @@
 optim.EP.kernel = function(
     blackbox, B, equal=FALSE, ethresh=1e-2, Xstart=NULL, start=10, end=100, 
     urate=10, rho=NULL, ncandf=function(k) { k }, 
-    kmcontrol=list(formula=~1, covtype="matern5_2", nugget=1e-6),
+    kmcontrol=list(formula=~1, coef.trend=0,
+                   covtype="matern5_2", nugget=1e-6,
+                   parinit=rep(0.1, nrow(B)), 
+                   lower = rep(1e-4, nrow(B)), upper = rep(10, nrow(B))),
     verb=2, ...)
 {
   ## check start
   if(start >= end) stop("must have start < end")
   if(start == 0 & is.null(Xstart)) stop("must have start>0 or given Xstart")
   
+  dim = nrow(B) # dimension
+  
   # Check kmcontrol
   if (is.null(kmcontrol$formula)) kmcontrol$formula = ~1
+  if (is.null(kmcontrol$coef.trend)) kmcontrol$coef.trend = 0
   if (is.null(kmcontrol$covtype)) kmcontrol$covtype = "matern5_2"
   if (is.null(kmcontrol$nugget)) kmcontrol$nugget = 1e-6
+  if (is.null(kmcontrol$parinit)) kmcontrol$parinit = rep(0.1, dim)
+  if (is.null(kmcontrol$lower)) kmcontrol$lower = rep(1e-4, dim)
+  if (is.null(kmcontrol$upper)) kmcontrol$upper = rep(10, dim)
   
-  dim = nrow(B) # dimension
+  
   # Hypercube [0, 1]^d
   Hypercube = matrix(c(rep(0,dim), rep(1,dim)), ncol=2) 
   
@@ -251,17 +260,22 @@ optim.EP.kernel = function(
   ## initialize objective surrogate
   fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
   fgpi = km(formula = kmcontrol$formula, design = X_unit, response = (obj-fmean)/fsd, 
-            covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
-            lower = rep(1e-4, dim), upper = rep(10, dim),
+            covtype = kmcontrol$covtype, nugget = kmcontrol$nugget, 
+            coef.trend = kmcontrol$coef.trend,
+            parinit = kmcontrol$parinit, lower = kmcontrol$lower, upper = kmcontrol$upper,
             control=list(trace=0))
+  df = fgpi@covariance@range.val
   
   ## initializing constraint surrogates
   Cgpi = vector("list", nc)
+  dc = matrix(NA, nrow=nc, ncol=dim)
   for (j in 1:nc) {
     Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
                    covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
-                   lower = rep(1e-4, dim), upper = rep(10, dim),
+                   coef.trend = kmcontrol$coef.trend,
+                   parinit = kmcontrol$parinit, lower = kmcontrol$lower, upper = kmcontrol$upper,
                    control=list(trace=0))
+    dc[j,] = Cgpi[[j]]@covariance@range.val
   }
   
   ## printing initial design
@@ -282,15 +296,19 @@ optim.EP.kernel = function(
       fmean = mean(obj); fsd = sd(obj)
       fgpi = km(formula = kmcontrol$formula, design = X_unit, response = (obj-fmean)/fsd, 
                 covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
-                lower = rep(1e-4, dim), upper = rep(10, dim),
+                coef.trend = kmcontrol$coef.trend,
+                parinit = df, lower = kmcontrol$lower, upper = kmcontrol$upper,
                 control=list(trace=0))
+      df = fgpi@covariance@range.val
       
       ## constraint surrogates 
       for(j in 1:nc) {
         Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
                        covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
-                       lower = rep(1e-4, dim), upper = rep(10, dim),
+                       coef.trend = kmcontrol$coef.trend,
+                       parinit = dc[j,], lower = kmcontrol$lower, upper = kmcontrol$upper,
                        control=list(trace=0))
+        dc[j,] = Cgpi[[j]]@covariance@range.val
       }
     }
     
@@ -393,10 +411,13 @@ optim.EP.kernel = function(
     
     ## update GP fits
     fgpi = update(object = fgpi, newX = xnext_unit, newy = (obj[k]-fmean)/fsd, 
-                  cov.reestim = TRUE, newX.alreadyExist = FALSE)
+                  cov.reestim = TRUE, trend.reestim = FALSE, newX.alreadyExist = FALSE)
+    df = fgpi@covariance@range.val
+    
     for(j in 1:nc) { 
       Cgpi[[j]] = update(object = Cgpi[[j]], newX = xnext_unit, newy = C_bilog[k,j], 
-                         cov.reestim = TRUE, newX.alreadyExist = FALSE) 
+                         cov.reestim = TRUE, trend.reestim = FALSE, newX.alreadyExist = FALSE) 
+      dc[j,] = Cgpi[[j]]@covariance@range.val
     }
   }
 

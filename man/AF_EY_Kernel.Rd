@@ -4,7 +4,7 @@
 \alias{AF_EY_Kernel}
 \title{Predictive mean acquisition function}
 \usage{
-AF_EY_Kernel(x, fgpi, fmean, fsd, Cgpi, epbest, rho, equal, type = "UK")
+AF_EY_Kernel(x, fgpi, fmean, fsd, Cgpi, rho, equal, type = "UK")
 }
 \arguments{
 \item{x}{description}
@@ -12,8 +12,6 @@ AF_EY_Kernel(x, fgpi, fmean, fsd, Cgpi, epbest, rho, equal, type = "UK")
 \item{fgpi}{description}
 
 \item{Cgpi}{description}
-
-\item{epbest}{description}
 
 \item{rho}{description}
 

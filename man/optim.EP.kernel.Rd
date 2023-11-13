@@ -17,7 +17,8 @@ optim.EP.kernel(
   ncandf = function(k) {
      k
  },
-  kmcontrol = list(formula = ~1, covtype = "matern5_2", nugget = 1e-06),
+  kmcontrol = list(formula = ~1, coef.trend = 0, covtype = "matern5_2", nugget = 1e-06,
+    parinit = rep(0.1, nrow(B)), lower = rep(1e-04, nrow(B)), upper = rep(10, nrow(B))),
   verb = 2,
   ...
 )
