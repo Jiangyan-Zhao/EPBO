@@ -225,7 +225,7 @@ optim.EP = function(
       rho = rep(1, nc)
     }else {
       ECV = colMeans(CV) # averaged CV
-      rho = mean(abs(obj)) * ECV/sum(ECV^2)
+      rho = pmax(1, mean(abs(obj)) * ECV/sum(ECV^2))
     }
     if(any(equal)) rho[equal] = pmax(1/ethresh/sum(equal), rho[equal])
   }else{
