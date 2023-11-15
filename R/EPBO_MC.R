@@ -228,10 +228,10 @@ optim.EP.MC = function(blackbox, B,
   ## handle initial rho values
   if(is.null(rho)){
     if(all(feasibility)){            # 
-      rho = rep(0, nc)
+      rho = rep(1, nc)
     }else {
       ECV = colMeans(CV) # averaged CV
-      rho = mean(abs(obj)) * ECV/sum(ECV^2)
+      rho = pmax(1, mean(abs(obj)) * ECV/sum(ECV^2))
     }
     if(any(equal)) rho[equal] = pmax(1/ethresh/sum(equal), rho[equal])
   }else{
@@ -361,7 +361,7 @@ optim.EP.MC = function(blackbox, B,
     
     ## rho update
     if(all(feasibility)){ # 
-      rho_new = rep(0, nc)
+      rho_new = rep(1, nc)
     }else {
       ECV = colMeans(CV)
       rho_new = mean(abs(obj)) * ECV/sum(ECV^2)
