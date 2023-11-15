@@ -452,10 +452,10 @@ optim.EP4HD = function(blackbox, B,
       cat("  updating rho=(", paste(signif(pmax(rho_new, rho),3), collapse=", "), ")\n", sep="")
     }
     rho = pmax(rho_new, rho)
-    if(is.finite(m2) && since > 1 && since %% 5 == 0){
-      rho = rho*2
-      if(verb > 0){cat("  double rho if since%%5==0")}
-    }
+    # if(is.finite(m2) && since > 1 && since %% 5 == 0){
+    #   rho = rho*2
+    #   if(verb > 0){cat("  double rho if since%%5==0")}
+    # }
     
     ## calculate EP for data seen so far
     scv  = CV%*%rho; ep = obj + scv; epbest = min(ep)
