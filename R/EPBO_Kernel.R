@@ -234,10 +234,10 @@ optim.EP.kernel = function(
   ## handle initial rho values
   if(is.null(rho)){
     if(all(feasibility)){            # 
-      rho = rep(1, nc)
+      rho = rep(0, nc)
     }else {
       ECV = colMeans(CV) # averaged CV
-      rho = pmax(1, mean(abs(obj)) * ECV/sum(ECV^2))
+      rho = mean(abs(obj)) * ECV/sum(ECV^2)
     }
     if(any(equal)) rho[equal] = pmax(1/ethresh/sum(equal), rho[equal])
   }else{
@@ -265,6 +265,12 @@ optim.EP.kernel = function(
             parinit = kmcontrol$parinit, lower = kmcontrol$lower, upper = kmcontrol$upper,
             control=list(trace=0))
   df = fgpi@covariance@range.val
+  fgpi = km(formula = kmcontrol$formula, design = X_unit, response = (obj-fmean)/fsd, 
+            covtype = kmcontrol$covtype, nugget = kmcontrol$nugget, 
+            # coef.trend = kmcontrol$coef.trend,
+            parinit = df, lower = kmcontrol$lower, upper = kmcontrol$upper,
+            control=list(trace=0))
+  df = fgpi@covariance@range.val
   
   ## initializing constraint surrogates
   Cgpi = vector("list", nc)
@@ -274,6 +280,12 @@ optim.EP.kernel = function(
                    covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
                    # coef.trend = kmcontrol$coef.trend,
                    parinit = kmcontrol$parinit, lower = kmcontrol$lower, upper = kmcontrol$upper,
+                   control=list(trace=0))
+    dc[j,] = Cgpi[[j]]@covariance@range.val
+    Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
+                   covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
+                   # coef.trend = kmcontrol$coef.trend,
+                   parinit = dc[j,], lower = kmcontrol$lower, upper = kmcontrol$upper,
                    control=list(trace=0))
     dc[j,] = Cgpi[[j]]@covariance@range.val
   }
@@ -317,7 +329,7 @@ optim.EP.kernel = function(
     ck = C[which.min(ep),]
     invalid = rep(NA, nc)
     invalid[!equal] = (ck[!equal] > 0); invalid[equal] = (abs(ck[equal]) > ethresh)
-    if(any(invalid) && is.finite(m2)){
+    if(is.finite(m2) && any(invalid) && since > 2){
       rho[invalid] = rho[invalid]*2
       scv = CV%*%rho; ep = obj + scv; epbest = min(ep)
       if(verb > 0) cat(" the smallest EP is not feasible, updating rho=(", 
@@ -328,31 +340,42 @@ optim.EP.kernel = function(
     ncand = ncandf(k)
     cands = lhs(ncand, Hypercube) # random candidate grid
     tic = proc.time()[3] # Start time
-    AF = AF_ScaledEI_Kernel(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
-    nzsei = sum(AF > sqrt(.Machine$double.eps))
-    # Augment the candidate points
-    if(0.01*ncand < nzsei && nzsei <= 0.1*ncand){
-      cands = rbind(cands, lhs(10*ncand, Hypercube))
-      AF = c(AF, AF_ScaledEI_Kernel(cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal))
-      nzsei = sum(AF > sqrt(.Machine$double.eps))
-      ncand = 11*ncand
-    }
-    if(nzsei <= 0.01*ncand){ # minimize predictive mean approach
-      by = "ey"
-      AF = AF_EY_Kernel(cands, fgpi, fmean, fsd, Cgpi, rho, equal)
-      m = which.min(AF)
-      out_AF = optim(par=cands[m, ], fn=AF_EY_Kernel, method="L-BFGS-B",
-                     lower=0, upper=1,
-                     fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
-                     rho=rho, equal=equal)
-    }else{# maximize scaled expected improvement approach
-      by = "sei"
+    if(is.finite(m2) && since > 5 && since %% 2 == 0){ # maximize UEI approach
+      by = "UEI"
+      AF = AF_UEI_Kernel(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
       m = which.max(AF)
-      out_AF = optim(par=cands[m, ], fn=AF_ScaledEI_Kernel, method="L-BFGS-B",
+      out_AF = optim(par=cands[m, ], fn=AF_UEI_Kernel, method="L-BFGS-B",
                      lower=0, upper=1,
                      fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
                      control = list(fnscale = -1), # maximization problem
                      epbest=epbest, rho=rho, equal=equal)
+    }else{
+      AF = AF_ScaledEI_Kernel(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
+      nzsei = sum(AF > sqrt(.Machine$double.eps))
+      # Augment the candidate points
+      if((0.01*ncand < nzsei && nzsei <= 0.1*ncand) || (since>1 && since %% 5 == 0)){
+        cands = rbind(cands, lhs(10*ncand, Hypercube))
+        AF = c(AF, AF_ScaledEI_Kernel(cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal))
+        nzsei = sum(AF > sqrt(.Machine$double.eps))
+        ncand = 11*ncand
+      }
+      if(nzsei <= 0.01*ncand){ # minimize predictive mean approach
+        by = "ey"
+        AF = AF_EY_Kernel(cands, fgpi, fmean, fsd, Cgpi, rho, equal)
+        m = which.min(AF)
+        out_AF = optim(par=cands[m, ], fn=AF_EY_Kernel, method="L-BFGS-B",
+                       lower=0, upper=1,
+                       fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
+                       rho=rho, equal=equal)
+      }else{# maximize scaled expected improvement approach
+        by = "sei"
+        m = which.max(AF)
+        out_AF = optim(par=cands[m, ], fn=AF_ScaledEI_Kernel, method="L-BFGS-B",
+                       lower=0, upper=1,
+                       fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
+                       control = list(fnscale = -1), # maximization problem
+                       epbest=epbest, rho=rho, equal=equal)
+      }
     }
     toc = proc.time()[3] # End time
     AF_time = AF_time + toc - tic # AF running time
@@ -381,7 +404,7 @@ optim.EP.kernel = function(
     
     ## rho update
     if(all(feasibility)){ # 
-      rho_new = rep(1, nc)
+      rho_new = rep(0, nc)
     }else {
       ECV = colMeans(CV)
       rho_new = mean(abs(obj)) * ECV/sum(ECV^2)
@@ -390,10 +413,6 @@ optim.EP.kernel = function(
       cat("  updating rho=(", paste(signif(pmax(rho_new, rho),3), collapse=", "), ")\n", sep="")
     }
     rho = pmax(rho_new, rho)
-    # if(is.finite(m2) && since > 1 && since %% 5 == 0){
-    #   rho = rho*2
-    #   if(verb > 0){cat("  double rho if since%%5==0")}
-    # }
     
     ## calculate EP for data seen so far
     scv  = CV%*%rho; ep = obj + scv; epbest = min(ep)

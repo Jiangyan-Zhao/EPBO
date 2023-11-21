@@ -228,10 +228,10 @@ optim.EP.MC = function(blackbox, B,
   ## handle initial rho values
   if(is.null(rho)){
     if(all(feasibility)){            # 
-      rho = rep(1, nc)
+      rho = rep(0, nc)
     }else {
       ECV = colMeans(CV) # averaged CV
-      rho = pmax(1, mean(abs(obj)) * ECV/sum(ECV^2))
+      rho = mean(abs(obj)) * ECV/sum(ECV^2)
     }
     if(any(equal)) rho[equal] = pmax(1/ethresh/sum(equal), rho[equal])
   }else{
@@ -256,6 +256,12 @@ optim.EP.MC = function(blackbox, B,
   fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
   fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
   df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
+  deleteGPsep(fgpi)
+  df[df<dlim[1]] = 10*dlim[1]
+  df[df>dlim[2]] = dlim[2]/10
+  fmean = mean(obj); fsd = sd(obj)
+  fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
+  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
   
   ## initializing constraint surrogates
   Cgpi = rep(NA, nc)
@@ -263,6 +269,11 @@ optim.EP.MC = function(blackbox, B,
   for (j in 1:nc) {
     Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
     dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+    deleteGPsep(Cgpi[j])
+    dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
+    dc[j, dc[j,]>dlim[2]] = dlim[2]/10
+    Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
+    dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
   }
   
   ## printing initial design
@@ -303,7 +314,7 @@ optim.EP.MC = function(blackbox, B,
     ck = C[which.min(ep),]
     invalid = rep(NA, nc)
     invalid[!equal] = (ck[!equal] > 0); invalid[equal] = (abs(ck[equal]) > ethresh)
-    if(any(invalid) && is.finite(m2)){
+    if(is.finite(m2) && any(invalid) && since > 2){
       rho[invalid] = rho[invalid]*2
       scv = CV%*%rho; ep = obj + scv; epbest = min(ep)
       if(verb > 0) cat(" the smallest EP is not feasible, updating rho=(", 
@@ -314,25 +325,32 @@ optim.EP.MC = function(blackbox, B,
     ncand = ncandf(k)
     cands = lhs(ncand, Hypercube) # random candidate grid
     tic = proc.time()[3] # Start time
-    AF = AF_ScaledEI_MC(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal, N)
-    nzsei = sum(AF > sqrt(.Machine$double.eps))
-    # Augment the candidate points
-    if(0.01*ncand < nzsei && nzsei <= 0.1*ncand){
-      cands = rbind(cands, lhs(10*ncand, Hypercube))
-      AF = c(AF, AF_ScaledEI_MC(
-        cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal, N))
-      nzsei = sum(AF > sqrt(.Machine$double.eps))
-      ncand = 11*ncand
-    }
-    if(nzsei <= 0.01*ncand){ # minimize predictive mean approach
-      by = "ey"
-      AF = AF_EY(cands, fgpi, fmean, fsd, Cgpi, rho, equal)
-      m = which.min(AF)
-      out_AF = list(par=cands[m, ], value=AF[m])
-    }else{# maximize scaled expected improvement approach
-      by = "sei"
+    if(is.finite(m2) && since > 5 && since %% 2 == 0){ # maximize UEI approach
+      by = "UEI"
+      AF = AF_UEI_MC(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal, N)
       m = which.max(AF)
       out_AF = list(par=cands[m, ], value=AF[m])
+    }else{
+      AF = AF_ScaledEI_MC(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal, N)
+      nzsei = sum(AF > sqrt(.Machine$double.eps))
+      # Augment the candidate points
+      if((0.01*ncand < nzsei && nzsei <= 0.1*ncand) || (since>1 && since %% 5 == 0)){
+        cands = rbind(cands, lhs(10*ncand, Hypercube))
+        AF = c(AF, AF_ScaledEI_MC(
+          cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal, N))
+        nzsei = sum(AF > sqrt(.Machine$double.eps))
+        ncand = 11*ncand
+      }
+      if(nzsei <= 0.01*ncand){ # minimize predictive mean approach
+        by = "ey"
+        AF = AF_EY(cands, fgpi, fmean, fsd, Cgpi, rho, equal)
+        m = which.min(AF)
+        out_AF = list(par=cands[m, ], value=AF[m])
+      }else{# maximize scaled expected improvement approach
+        by = "sei"
+        m = which.max(AF)
+        out_AF = list(par=cands[m, ], value=AF[m])
+      }
     }
     toc = proc.time()[3] # End time
     AF_time = AF_time + toc - tic # AF running time
@@ -361,7 +379,7 @@ optim.EP.MC = function(blackbox, B,
     
     ## rho update
     if(all(feasibility)){ # 
-      rho_new = rep(1, nc)
+      rho_new = rep(0, nc)
     }else {
       ECV = colMeans(CV)
       rho_new = mean(abs(obj)) * ECV/sum(ECV^2)
@@ -370,10 +388,6 @@ optim.EP.MC = function(blackbox, B,
       cat("  updating rho=(", paste(signif(pmax(rho_new, rho),3), collapse=", "), ")\n", sep="")
     }
     rho = pmax(rho_new, rho)
-    # if(is.finite(m2) && since > 1 && since %% 5 == 0){
-    #   rho = rho*2
-    #   if(verb > 0){cat("  double rho if since%%5==0")}
-    # }
     
     ## calculate EP for data seen so far
     scv  = CV%*%rho; ep = obj + scv; epbest = min(ep)

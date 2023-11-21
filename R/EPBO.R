@@ -222,10 +222,10 @@ optim.EP = function(
   ## handle initial rho values
   if(is.null(rho)){
     if(all(feasibility)){            # 
-      rho = rep(1, nc)
+      rho = rep(0, nc)
     }else {
       ECV = colMeans(CV) # averaged CV
-      rho = pmax(1, mean(abs(obj)) * ECV/sum(ECV^2))
+      rho = mean(abs(obj)) * ECV/sum(ECV^2)
     }
     if(any(equal)) rho[equal] = pmax(1/ethresh/sum(equal), rho[equal])
   }else{
@@ -244,12 +244,19 @@ optim.EP = function(
   }else{                        # if none of the solutions are feasible
     xbest = X[which.min(scv),] 
   }
+  xbest_unit = as.vector(normalize(xbest, B))
   
   ## initialize objective surrogate
   ab = darg(NULL, X_unit)$ab
   fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
   fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
   df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
+  deleteGPsep(fgpi)
+  df[df<dlim[1]] = 10*dlim[1]
+  df[df>dlim[2]] = dlim[2]/10
+  fmean = mean(obj); fsd = sd(obj)
+  fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
+  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
   
   ## initializing constraint surrogates
   Cgpi = rep(NA, nc)
@@ -257,6 +264,11 @@ optim.EP = function(
   for (j in 1:nc) {
     Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
     dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+    deleteGPsep(Cgpi[j])
+    dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
+    dc[j, dc[j,]>dlim[2]] = dlim[2]/10
+    Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
+    dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
   }
   
   ## printing initial design
@@ -297,8 +309,8 @@ optim.EP = function(
     ck = C[which.min(ep),]
     invalid = rep(NA, nc)
     invalid[!equal] = (ck[!equal] > 0); invalid[equal] = (abs(ck[equal]) > ethresh)
-    if(any(invalid) && is.finite(m2)){
-      rho[invalid] = rho[invalid]*2
+    if(is.finite(m2) && any(invalid) && since > 2){
+      rho[invalid] = rho[invalid] * 2
       scv = CV%*%rho; ep = obj + scv; epbest = min(ep)
       if(verb > 0) cat(" the smallest EP is not feasible, updating rho=(", 
                        paste(signif(rho,3), collapse=", "), ")\n", sep="")
@@ -308,31 +320,62 @@ optim.EP = function(
     ncand = ncandf(k)
     cands = lhs(ncand, Hypercube) # random candidate grid
     tic = proc.time()[3] # Start time
-    AF = AF_ScaledEI(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
-    nzsei = sum(AF > AF_tol)
-    # Augment the candidate points
-    if(ey_tol*ncand < nzsei && nzsei <= 0.1*ncand){
-      cands = rbind(cands, lhs(10*ncand, Hypercube))
-      AF = c(AF, AF_ScaledEI(cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal))
-      nzsei = sum(AF > AF_tol)
-      ncand = 11*ncand
-    }
-    if(nzsei <= ey_tol*ncand){ # minimize predictive mean approach
-      by = "ey"
-      AF = AF_EY(cands, fgpi, fmean, fsd, Cgpi, rho, equal)
-      m = which.min(AF)
-      out_AF = optim(par=cands[m, ], fn=AF_EY, method="L-BFGS-B",
-                     lower=0, upper=1,
-                     fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
-                     rho=rho, equal=equal)
-    }else{# maximize scaled expected improvement approach
-      by = "sei"
+    if(is.finite(m2) && since > 5 && since %% 2 == 0){ # maximize UEI approach
+      # by = "ConVar"
+      # TRlower = pmax(xbest_unit - 0.2, 0)
+      # TRupper = pmin(xbest_unit + 0.2, 1)
+      # TRspace = cbind(TRlower, TRupper)
+      # cands = lhs(ncand, TRspace)
+      # AF = AF_ConVar(cands, fgpi, Cgpi, equal)
+      # m = which.max(AF)
+      # out_AF = optim(par=cands[m, ], fn=AF_ConVar, method="L-BFGS-B",
+      #                lower=TRlower, upper=TRupper,
+      #                control = list(fnscale = -1), # maximization problem
+      #                fgpi=fgpi, Cgpi=Cgpi, equal=equal)
+      
+      # by = "LCB"
+      # AF = AF_LCB(cands, fgpi, fmean, fsd, Cgpi, rho, equal)
+      # m = which.min(AF)
+      # out_AF = optim(par=cands[m, ], fn=AF_LCB, method="L-BFGS-B",
+      #                lower=0, upper=1,
+      #                fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd,
+      #                rho=rho, equal=equal)
+      
+      by = "UEI"
+      AF = AF_UEI(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
       m = which.max(AF)
-      out_AF = optim(par=cands[m, ], fn=AF_ScaledEI, method="L-BFGS-B",
+      out_AF = optim(par=cands[m, ], fn=AF_UEI, method="L-BFGS-B",
                      lower=0, upper=1,
                      fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
                      control = list(fnscale = -1), # maximization problem
                      epbest=epbest, rho=rho, equal=equal)
+    }else{
+      AF = AF_ScaledEI(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
+      nzsei = sum(AF > AF_tol)
+      # Augment the candidate points
+      if((ey_tol*ncand < nzsei && nzsei <= 0.1*ncand) || (since>1 && since %% 5 == 0)){
+        cands = rbind(cands, lhs(10*ncand, Hypercube))
+        AF = c(AF, AF_ScaledEI(cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal))
+        nzsei = sum(AF > AF_tol)
+        ncand = 11*ncand
+      }
+      if(nzsei <= ey_tol*ncand){ # minimize predictive mean approach
+        by = "EY"
+        AF = AF_EY(cands, fgpi, fmean, fsd, Cgpi, rho, equal)
+        m = which.min(AF)
+        out_AF = optim(par=cands[m, ], fn=AF_EY, method="L-BFGS-B",
+                       lower=0, upper=1,
+                       fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
+                       rho=rho, equal=equal)
+      }else{# maximize scaled expected improvement approach
+        by = "ScaledEI"
+        m = which.max(AF)
+        out_AF = optim(par=cands[m, ], fn=AF_ScaledEI, method="L-BFGS-B",
+                       lower=0, upper=1,
+                       fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
+                       control = list(fnscale = -1), # maximization problem
+                       epbest=epbest, rho=rho, equal=equal)
+      }
     }
     toc = proc.time()[3] # End time
     AF_time = AF_time + toc - tic # AF running time
@@ -361,7 +404,7 @@ optim.EP = function(
     
     ## rho update
     if(all(feasibility)){ # 
-      rho_new = rep(1, nc)
+      rho_new = rep(0, nc)
     }else {
       ECV = colMeans(CV)
       rho_new = mean(abs(obj)) * ECV/sum(ECV^2)
@@ -370,10 +413,6 @@ optim.EP = function(
       cat("  updating rho=(", paste(signif(pmax(rho_new, rho),3), collapse=", "), ")\n", sep="")
     }
     rho = pmax(rho_new, rho)
-    # if(is.finite(m2) && since > 1 && since %% 5 == 0){
-    #   rho = rho*2
-    #   if(verb > 0){cat("  double rho if since%%5==0")}
-    # }
     
     ## calculate EP for data seen so far
     scv  = CV%*%rho; ep = obj + scv; epbest = min(ep)
@@ -382,15 +421,18 @@ optim.EP = function(
     }else{ 
       xbest = X[which.min(scv),] 
     }
+    xbest_unit = as.vector(normalize(xbest, B))
     
     ## progress meter
     if(verb > 0) {
       cat("k=", k, " ", sep="")
-      cat(by, "=", out_AF$value, sep="")
+      cat(by, "=", paste(signif(out_AF$value,3), collapse=" "), sep="")
       cat("; xnext ([", paste(signif(xnext,3), collapse=" "), 
           "], feasibility=", feasibility[k], ")\n", sep="")
       cat(" xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
-      cat("]; ybest (prog=", m2, ", ep=", epbest, ", since=", since, ")\n", sep="")
+      cat("]; ybest (prog=", paste(signif(m2,3), collapse=" ")) 
+      cat(", ep=", paste(signif(epbest,3), collapse=" "))
+      cat(", since=", since, ")\n", sep="")
     }
     
     ## update GP fits
@@ -404,12 +446,12 @@ optim.EP = function(
     
     ## plot progress
     if(plotprog) {
-      par(mfrow=c(2,2))
+      par(ps=16, mfrow=c(2,2))
       ## progress
       if(is.finite(m2)){
-        plot(prog, type="l", main="progress")
+        plot(prog, type="l", lwd=1.6, main="progress")
       }else{
-        plot(prog, type="l", ylim=range(obj), main="progress")
+        plot(prog, type="l", ylim=range(obj), lwd=1.6, main="progress")
       }
       ## acquisition function
       cands_unnormalize = unnormalize(cands, B)

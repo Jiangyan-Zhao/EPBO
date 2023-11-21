@@ -1,7 +1,7 @@
 Package: EPBO
 Title: Bayesian Optimization via Exact Penalty
-Version: 0.0.9
-Date: 2023-11-03
+Version: 0.0.11
+Date: 2023-11-20
 Authors@R: 
   person(given = "Jiangyan", 
          family = "Zhao", 

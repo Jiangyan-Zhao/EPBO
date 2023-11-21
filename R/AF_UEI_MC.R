@@ -1,5 +1,4 @@
-
-#' @title ScaledEI acquisition function
+#' @title UEI acquisition function
 #' 
 #' @description Scaled expected improvement
 #' 
@@ -7,7 +6,13 @@
 #' 
 #' @param fgpi description
 #' 
+#' @param fmean description
+#' 
+#' @param fsd description
+#' 
 #' @param Cgpi description
+#' 
+#' @param epbest description
 #' 
 #' @param rho description
 #' 
@@ -15,6 +20,9 @@
 #' constraints, specifying which should be treated as equality constraints (\code{1}) and 
 #' which as inequality (\code{0}) 
 #' 
+#' @param N description
+#' 
+#' @param beta description
 #' 
 #' @returns AF 
 #' 
@@ -35,7 +43,7 @@
 #' 
 #' 
 
-AF_LCB = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
+AF_UEI_MC = function(x, fgpi, fmean, fsd, Cgpi, epbest, rho, equal, N=1000, beta=3)
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x) # number of the candidate points
@@ -47,18 +55,29 @@ AF_LCB = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
   
   ## constraints
   nc = length(Cgpi) # number of the constraint
-  mu_C = sigma_C = omega = matrix(NA, nc, ncand)
+  mu_C = sigma_C = matrix(NA, nc, ncand)
   for (j in 1:nc) {
     pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
     mu_C[j,] = pred_C$mean
     sigma_C[j,] = sqrt(pred_C$s2)
-    omega[j,] = (equal[j]+1)*pnorm(mu_C[j,]/sigma_C[j,]) - equal[j]
   }
   
-  ## Acquaisition function
-  mu_ep = mu_f + rho%*%(omega*mu_C)
-  sigma_ep = sqrt(sigma_f^2 + (rho^2)%*%((omega*sigma_C)^2))
-  LCB = mu_ep - 3*sigma_ep
-  return(LCB)
+  ## expected improvement
+  EP = matrix(NA, nrow = N, ncol = ncand)
+  for (n in 1:N) {
+    EP[n,] = rnorm(ncand, mu_f, sigma_f)
+    for (j in 1:nc) {
+      if(equal[j]){
+        EP[n,] = EP[n,] + rho[j]*abs(rnorm(ncand, mu_C[j,], sigma_C[j,]))
+      }else{
+        EP[n,] = EP[n,] + rho[j]*pmax(0, rnorm(ncand, mu_C[j,], sigma_C[j,]))
+      }
+    }
+  }
+  improvement = matrix(pmax(0, epbest-EP), nrow = N)
+  EI = colMeans(improvement) # expected improvement
+  SI = colSds(improvement)   # Standard deviation of the improvement
+  UEI = EI + beta * SI
+  EI[is.nan(UEI)] = 0
+  return(UEI)
 }
-

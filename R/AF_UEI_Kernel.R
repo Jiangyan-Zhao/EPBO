@@ -1,5 +1,4 @@
-
-#' @title ScaledEI acquisition function
+#' @title UEI acquisition function
 #' 
 #' @description Scaled expected improvement
 #' 
@@ -8,6 +7,8 @@
 #' @param fgpi description
 #' 
 #' @param Cgpi description
+#' 
+#' @param epbest description
 #' 
 #' @param rho description
 #' 
@@ -35,30 +36,34 @@
 #' 
 #' 
 
-AF_LCB = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
+AF_UEI_Kernel = function(x, fgpi, fmean, fsd, Cgpi, epbest, rho, equal, beta=3, type="UK")
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x) # number of the candidate points
   
   ## objective
-  pred_f = predGPsep(fgpi, x, lite=TRUE)
+  pred_f = predict(object=fgpi, newdata=x, type=type, checkNames = FALSE, light.return = TRUE)
   mu_f = pred_f$mean * fsd + fmean
-  sigma_f = sqrt(pred_f$s2) * fsd
+  sigma_f = pred_f$sd * fsd
   
   ## constraints
   nc = length(Cgpi) # number of the constraint
   mu_C = sigma_C = omega = matrix(NA, nc, ncand)
   for (j in 1:nc) {
-    pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
+    pred_C = predict(object=Cgpi[[j]], newdata=x, type=type, checkNames = FALSE, light.return = TRUE)
     mu_C[j,] = pred_C$mean
-    sigma_C[j,] = sqrt(pred_C$s2)
+    sigma_C[j,] = pred_C$sd
     omega[j,] = (equal[j]+1)*pnorm(mu_C[j,]/sigma_C[j,]) - equal[j]
   }
   
   ## Acquaisition function
   mu_ep = mu_f + rho%*%(omega*mu_C)
   sigma_ep = sqrt(sigma_f^2 + (rho^2)%*%((omega*sigma_C)^2))
-  LCB = mu_ep - 3*sigma_ep
-  return(LCB)
+  d = (epbest - mu_ep)/sigma_ep
+  EI = sigma_ep * (d*pnorm(d) + dnorm(d)) # expected improvement
+  VI = sigma_ep^2 * ((d^2+1)*pnorm(d) + d*dnorm(d)) - EI^2 # variance of the improvement (remove sigma_ep)
+  VI = pmax(.Machine$double.xmin, VI)
+  UEI = EI + beta*sqrt(VI)
+  UEI[is.nan(UEI)] = 0
+  return(UEI)
 }
-

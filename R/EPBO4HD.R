@@ -242,10 +242,10 @@ optim.EP4HD = function(blackbox, B,
   ## handle initial rho values
   if(is.null(rho)){
     if(all(feasibility)){            # 
-      rho = rep(1, nc)
+      rho = rep(0, nc)
     }else {
       ECV = colMeans(CV) # averaged CV
-      rho = pmax(1, mean(abs(obj)) * ECV/sum(ECV^2))
+      rho = max(abs(obj)) * ECV/sum(ECV^2)
     }
     if(any(equal)) rho[equal] = pmax(1/ethresh/sum(equal), rho[equal])
   }else{
@@ -357,21 +357,21 @@ optim.EP4HD = function(blackbox, B,
     ## calculate composite surrogate, and evaluate SEI and/or EY
     tic = proc.time()[3] # Start time
     if(since > 5 && since %% 2 == 0){ # maximize constrained variance approach
-      by = "Var"
-      length.var = pmax(0.1, weights*trcontrol$length)
-      TRlower = pmax(xbest_unit - length.var/2, 0)
-      TRupper = pmin(xbest_unit + length.var/2, 1)
-      TRspace = cbind(TRlower, TRupper)
-      cands = lhs(ncand, TRspace)
+      by = "ConVar"
+      # length.var = pmin(0.4, weights * trcontrol$length)
+      # TRlower = pmax(xbest_unit - length.var, 0)
+      # TRupper = pmin(xbest_unit + length.var, 1)
+      # TRspace = cbind(TRlower, TRupper)
+      # cands = lhs(ncand, TRspace)
       AF = AF_ConVar(cands, fgpi, Cgpi, equal)
       m = which.max(AF)
-      # if(opt && max(AF) > AF.tol){
-      #   out_AF = optim(par=cands[m, ], fn=AF_ConVar, method="L-BFGS-B",
-      #                  lower=TRlower, upper=TRupper,
-      #                  control = list(fnscale = -1), # maximization problem
-      #                  fgpi=fgpi, Cgpi=Cgpi, equal=equal)
-      # }else{ out_AF = list(par=cands[m, ], value=max(AF)) }
-      out_AF = list(par=cands[m, ], value=max(AF))
+      if(opt && max(AF) > AF.tol){
+        out_AF = optim(par=cands[m, ], fn=AF_ConVar, method="L-BFGS-B",
+                       lower=TRlower, upper=TRupper,
+                       control = list(fnscale = -1), # maximization problem
+                       fgpi=fgpi, Cgpi=Cgpi, equal=equal)
+      }else{ out_AF = list(par=cands[m, ], value=max(AF)) }
+      # out_AF = list(par=cands[m, ], value=max(AF))
     }else{
       AF = AF_ScaledEI(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
       nzsei = sum(AF > AF.tol)
@@ -383,7 +383,7 @@ optim.EP4HD = function(blackbox, B,
         ncand = 11*ncand
       }
       if(nzsei <= ey.tol*ncand){ # minimize predictive mean approach
-        by = "ey"
+        by = "EY"
         AF = AF_EY(cands, fgpi, fmean, fsd, Cgpi, rho, equal)
         m = which.min(AF)
         if(opt){
@@ -393,7 +393,7 @@ optim.EP4HD = function(blackbox, B,
                          rho=rho, equal=equal)
         }else{ out_AF = list(par=cands[m, ], value=min(AF)) }
       }else{ # maximize scaled expected improvement approach
-        by = "sei"
+        by = "ScaledEI"
         m = which.max(AF)
         if(opt){
           out_AF = optim(par=cands[m, ], fn=AF_ScaledEI, method="L-BFGS-B",
@@ -443,10 +443,10 @@ optim.EP4HD = function(blackbox, B,
     
     ## rho update
     if(all(feasibility)){ # 
-      rho_new = rep(1, nc)
+      rho_new = rep(0, nc)
     }else {
       ECV = colMeans(CV)
-      rho_new = mean(abs(obj)) * ECV/sum(ECV^2)
+      rho_new = max(abs(obj)) * ECV/sum(ECV^2)
     }
     if(verb > 0 && any(rho_new > rho)){ # printing progress
       cat("  updating rho=(", paste(signif(pmax(rho_new, rho),3), collapse=", "), ")\n", sep="")
@@ -536,12 +536,12 @@ optim.EP4HD = function(blackbox, B,
     
     ## plot progress
     if(plotprog) {
-      par(mfrow=c(2,2))
+      par(ps=16, mfrow=c(2,2))
       ## progress
       if(is.finite(m2)){
-        plot(prog, type="l", main="progress")
+        plot(prog, type="l", lwd=1.6, main="progress")
       }else{
-        plot(prog, type="l", ylim=range(obj), main="progress")
+        plot(prog, type="l", ylim=range(obj), lwd=1.6, main="progress")
       }
       ## acquisition function
       cands_unnormalize = unnormalize(cands, B)

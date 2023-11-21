@@ -4,7 +4,7 @@
 \alias{AF_UEI}
 \title{UEI acquisition function}
 \usage{
-AF_UEI(x, fgpi, Cgpi, epbest, rho, equal)
+AF_UEI(x, fgpi, fmean, fsd, Cgpi, epbest, rho, equal, beta = 3)
 }
 \arguments{
 \item{x}{description}

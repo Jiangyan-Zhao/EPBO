@@ -47,14 +47,13 @@ AF_ConVar = function(x, fgpi, Cgpi, equal)
     mu_C = pred_C$mean
     sigma_C = sqrt(pred_C$s2)
     if(equal[j]){
-      LCB[,j] = abs(mu_C) - 3*sigma_C
+      LCB[,j] = abs(mu_C) - 6*sigma_C
     }else{
-      LCB[,j] = mu_C - 3*sigma_C
+      LCB[,j] = mu_C - 6*sigma_C
     }
   }
   
   ## Acquaisition function
-  AF = sigma_f
   infeasible = apply(LCB > 0, 1, any)
   if(all(infeasible)){
     AF = sigma_f

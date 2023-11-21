@@ -36,15 +36,15 @@
 #' 
 #' 
 
-AF_UEI = function(x, fgpi, Cgpi, epbest, rho, equal)
+AF_UEI = function(x, fgpi, fmean, fsd, Cgpi, epbest, rho, equal, beta=3)
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x) # number of the candidate points
   
   ## objective
   pred_f = predGPsep(fgpi, x, lite=TRUE)
-  mu_f = pred_f$mean
-  sigma_f = sqrt(pred_f$s2)
+  mu_f = pred_f$mean * fsd + fmean
+  sigma_f = sqrt(pred_f$s2) * fsd
   
   ## constraints
   nc = length(Cgpi) # number of the constraint
@@ -62,7 +62,8 @@ AF_UEI = function(x, fgpi, Cgpi, epbest, rho, equal)
   d = (epbest - mu_ep)/sigma_ep
   EI = sigma_ep * (d*pnorm(d) + dnorm(d)) # expected improvement
   VI = sigma_ep^2 * ((d^2+1)*pnorm(d) + d*dnorm(d)) - EI^2 # variance of the improvement (remove sigma_ep)
-  VI = pmax(0, VI)
-  UEI = EI + 2*sqrt(VI) # Scaled expected improvement
+  VI = pmax(.Machine$double.xmin, VI)
+  UEI = EI + beta*sqrt(VI)
+  EI[is.nan(UEI)] = 0
   return(UEI)
 }
