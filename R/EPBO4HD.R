@@ -169,7 +169,7 @@ optim.EP4HD = function(blackbox, B,
                        plotprog=FALSE,
                        opt=TRUE,
                        ey.tol=1e-2, AF.tol=sqrt(.Machine$double.eps),
-                       verb=2, ...)
+                       verb=1, ...)
 {
   ## check start
   if(start >= end) stop("must have start < end")
@@ -245,7 +245,7 @@ optim.EP4HD = function(blackbox, B,
       rho = rep(0, nc)
     }else {
       ECV = colMeans(CV) # averaged CV
-      rho = max(abs(obj)) * ECV/sum(ECV^2)
+      rho = mean(abs(obj)) * ECV/sum(ECV^2)
     }
     if(any(equal)) rho[equal] = pmax(1/ethresh/sum(equal), rho[equal])
   }else{
@@ -270,14 +270,28 @@ optim.EP4HD = function(blackbox, B,
   ab = darg(NULL, X_unit)$ab
   fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
   fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
-  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
+  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
+  if(urate > 1){
+    deleteGPsep(fgpi)
+    df[df<dlim[1]] = 10*dlim[1]
+    df[df>dlim[2]] = dlim[2]/10
+    fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
+    df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
+  }
   
   ## initializing constraint surrogates
   Cgpi = rep(NA, nc)
   dc = matrix(NA, nrow=nc, ncol=dim)
   for (j in 1:nc) {
     Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
-    dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+    dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
+    if(urate > 1){
+      deleteGPsep(Cgpi[j])
+      dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
+      dc[j, dc[j,]>dlim[2]] = dlim[2]/10
+      Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
+      dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
+    }
   }
   
   ## printing initial design
@@ -301,7 +315,7 @@ optim.EP4HD = function(blackbox, B,
       df[df>dlim[2]] = dlim[2]/10
       fmean = mean(obj); fsd = sd(obj)
       fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
-      df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+      df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
       
       ## constraint surrogates 
       for(j in 1:nc) {
@@ -309,7 +323,7 @@ optim.EP4HD = function(blackbox, B,
         dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
         dc[j, dc[j,]>dlim[2]] = dlim[2]/10
         Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
-        dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+        dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
       }
     }
     
@@ -318,7 +332,7 @@ optim.EP4HD = function(blackbox, B,
     ck = C[which.min(ep),]
     invalid = rep(NA, nc)
     invalid[!equal] = (ck[!equal] > 0); invalid[equal] = (abs(ck[equal]) > ethresh)
-    if(any(invalid) && is.finite(m2)){
+    if(is.finite(m2) && any(invalid) && since > 2){
       rho[invalid] = rho[invalid]*2
       scv = CV%*%rho; ep = obj + scv; epbest = min(ep)
       if(verb > 0) cat(" the smallest EP is not feasible, updating rho=(", 
@@ -331,6 +345,8 @@ optim.EP4HD = function(blackbox, B,
     weights = weights / prod(weights)^(1/dim)
     TRlower = pmax(xbest_unit - weights*trcontrol$length/2, 0)
     TRupper = pmin(xbest_unit + weights*trcontrol$length/2, 1)
+    # TRlower = pmax(xbest_unit - trcontrol$length/2, 0)
+    # TRupper = pmin(xbest_unit + trcontrol$length/2, 1)
     TRspace = cbind(TRlower, TRupper)
     ncand = ncandf(k)
     if(dim <= 20){
@@ -346,7 +362,11 @@ optim.EP4HD = function(blackbox, B,
       cands[which(mask==1)] = pert[which(mask==1)]
     }
     
-    if(verb > 0) { 
+    if(verb == 1) { 
+      cat("k=", k, sep="")
+      cat(" length=", trcontrol$length, sep="") 
+    }
+    if(verb == 2){
       cat("k=", k, sep="")
       cat(" trcontrol(length=", trcontrol$length, sep="") 
       cat(", weights=[", paste(signif(weights, 3), collapse=" "), sep="") 
@@ -356,27 +376,22 @@ optim.EP4HD = function(blackbox, B,
     
     ## calculate composite surrogate, and evaluate SEI and/or EY
     tic = proc.time()[3] # Start time
-    if(since > 5 && since %% 2 == 0){ # maximize constrained variance approach
-      by = "ConVar"
-      # length.var = pmin(0.4, weights * trcontrol$length)
-      # TRlower = pmax(xbest_unit - length.var, 0)
-      # TRupper = pmin(xbest_unit + length.var, 1)
-      # TRspace = cbind(TRlower, TRupper)
-      # cands = lhs(ncand, TRspace)
-      AF = AF_ConVar(cands, fgpi, Cgpi, equal)
+    if(is.finite(m2) && since > 5 && since %% 2 == 0){ # maximize UEI approach
+      by = "UEI"
+      AF = AF_UEI(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
       m = which.max(AF)
       if(opt && max(AF) > AF.tol){
-        out_AF = optim(par=cands[m, ], fn=AF_ConVar, method="L-BFGS-B",
+        out_AF = optim(par=cands[m, ], fn=AF_UEI, method="L-BFGS-B",
                        lower=TRlower, upper=TRupper,
+                       fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
                        control = list(fnscale = -1), # maximization problem
-                       fgpi=fgpi, Cgpi=Cgpi, equal=equal)
+                       epbest=epbest, rho=rho, equal=equal)
       }else{ out_AF = list(par=cands[m, ], value=max(AF)) }
-      # out_AF = list(par=cands[m, ], value=max(AF))
     }else{
       AF = AF_ScaledEI(cands, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
       nzsei = sum(AF > AF.tol)
       # Augment the candidate points
-      if(ey.tol*ncand < nzsei && nzsei <= 0.1*ncand){
+      if((0.01*ncand < nzsei && nzsei <= 0.1*ncand) || (since>1 && since %% 5 == 0)){
         cands = rbind(cands, lhs(10*ncand, TRspace))
         AF = c(AF, AF_ScaledEI(cands[-(1:ncand),], fgpi, fmean, fsd, Cgpi, epbest, rho, equal))
         nzsei = sum(AF > AF.tol)
@@ -401,7 +416,7 @@ optim.EP4HD = function(blackbox, B,
                          fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
                          control = list(fnscale = -1), # maximization problem
                          epbest=epbest, rho=rho, equal=equal)
-        }else{ out_AF = list(par=cands[m, ], value=min(AF)) }
+        }else{ out_AF = list(par=cands[m, ], value=max(AF)) }
         # if(verb>0){
         #   cat("out_AF(value=", out_AF$value, "par=[", 
         #       paste(signif(out_AF$par,3), collapse=" "), "]\n")
@@ -446,10 +461,10 @@ optim.EP4HD = function(blackbox, B,
       rho_new = rep(0, nc)
     }else {
       ECV = colMeans(CV)
-      rho_new = max(abs(obj)) * ECV/sum(ECV^2)
+      rho_new = mean(abs(obj)) * ECV/sum(ECV^2)
     }
     if(verb > 0 && any(rho_new > rho)){ # printing progress
-      cat("  updating rho=(", paste(signif(pmax(rho_new, rho),3), collapse=", "), ")\n", sep="")
+      cat("  updating rho=[", paste(signif(pmax(rho_new, rho),3), collapse=", "), "]\n", sep="")
     }
     rho = pmax(rho_new, rho)
     # if(is.finite(m2) && since > 1 && since %% 5 == 0){
@@ -467,7 +482,11 @@ optim.EP4HD = function(blackbox, B,
     xbest_unit = as.vector(normalize(xbest, B))
     
     ## progress meter
-    if(verb > 0) {
+    if(verb == 1) {
+      cat("  ", by, "=", out_AF$value, ", ncand=", ncand, sep="")
+      cat("; ybest (prog=", m2, ", ep=", epbest, ", since=", since, ")\n", sep="")
+    }
+    if(verb == 2) {
       cat("  ", by, "=", out_AF$value, ", ncand=", ncand, sep="")
       cat("; xnext ([", paste(signif(xnext,3), collapse=" "), 
           "], feasibility=", feasibility[k], ")\n", sep="")
@@ -526,12 +545,12 @@ optim.EP4HD = function(blackbox, B,
     }
     
     ## update GP fits
-    updateGPsep(fgpi, xnext_unit, (obj[k]-fmean)/fsd, verb = verb-2)
-    df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+    updateGPsep(fgpi, xnext_unit, (obj[k]-fmean)/fsd, verb = 0)
+    df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
     
     for(j in 1:nc) {
-      updateGPsep(Cgpi[j], xnext_unit, C_bilog[k,j], verb = verb-2)
-      dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+      updateGPsep(Cgpi[j], xnext_unit, C_bilog[k,j], verb = 0)
+      dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
     }
     
     ## plot progress

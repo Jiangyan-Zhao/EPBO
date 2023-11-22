@@ -251,12 +251,13 @@ optim.EP = function(
   fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
   fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
   df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
-  deleteGPsep(fgpi)
-  df[df<dlim[1]] = 10*dlim[1]
-  df[df>dlim[2]] = dlim[2]/10
-  fmean = mean(obj); fsd = sd(obj)
-  fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
-  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+  if(urate > 1){
+    deleteGPsep(fgpi)
+    df[df<dlim[1]] = 10*dlim[1]
+    df[df>dlim[2]] = dlim[2]/10
+    fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
+    df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+  }
   
   ## initializing constraint surrogates
   Cgpi = rep(NA, nc)
@@ -264,11 +265,13 @@ optim.EP = function(
   for (j in 1:nc) {
     Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
     dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-    deleteGPsep(Cgpi[j])
-    dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-    dc[j, dc[j,]>dlim[2]] = dlim[2]/10
-    Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
-    dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+    if(urate > 1){
+      deleteGPsep(Cgpi[j])
+      dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
+      dc[j, dc[j,]>dlim[2]] = dlim[2]/10
+      Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
+      dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+    }
   }
   
   ## printing initial design
@@ -410,7 +413,7 @@ optim.EP = function(
       rho_new = mean(abs(obj)) * ECV/sum(ECV^2)
     }
     if(verb > 0 && any(rho_new > rho)){ # printing progress
-      cat("  updating rho=(", paste(signif(pmax(rho_new, rho),3), collapse=", "), ")\n", sep="")
+      cat("  updating rho=[", paste(signif(pmax(rho_new, rho),3), collapse=", "), "]\n", sep="")
     }
     rho = pmax(rho_new, rho)
     
@@ -426,7 +429,7 @@ optim.EP = function(
     ## progress meter
     if(verb > 0) {
       cat("k=", k, " ", sep="")
-      cat(by, "=", paste(signif(out_AF$value,3), collapse=" "), sep="")
+      cat(by, "=", paste(signif(out_AF$value,3), collapse=" "), ", ncand=", ncand, sep="")
       cat("; xnext ([", paste(signif(xnext,3), collapse=" "), 
           "], feasibility=", feasibility[k], ")\n", sep="")
       cat(" xbest=[", paste(signif(xbest,3), collapse=" "), sep="")

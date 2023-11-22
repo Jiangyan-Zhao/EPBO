@@ -265,12 +265,14 @@ optim.EP.kernel = function(
             parinit = kmcontrol$parinit, lower = kmcontrol$lower, upper = kmcontrol$upper,
             control=list(trace=0))
   df = fgpi@covariance@range.val
-  fgpi = km(formula = kmcontrol$formula, design = X_unit, response = (obj-fmean)/fsd, 
-            covtype = kmcontrol$covtype, nugget = kmcontrol$nugget, 
-            # coef.trend = kmcontrol$coef.trend,
-            parinit = df, lower = kmcontrol$lower, upper = kmcontrol$upper,
-            control=list(trace=0))
-  df = fgpi@covariance@range.val
+  if(urate > 1){
+    fgpi = km(formula = kmcontrol$formula, design = X_unit, response = (obj-fmean)/fsd, 
+              covtype = kmcontrol$covtype, nugget = kmcontrol$nugget, 
+              # coef.trend = kmcontrol$coef.trend,
+              parinit = df, lower = kmcontrol$lower, upper = kmcontrol$upper,
+              control=list(trace=0))
+    df = fgpi@covariance@range.val
+  }
   
   ## initializing constraint surrogates
   Cgpi = vector("list", nc)
@@ -282,12 +284,14 @@ optim.EP.kernel = function(
                    parinit = kmcontrol$parinit, lower = kmcontrol$lower, upper = kmcontrol$upper,
                    control=list(trace=0))
     dc[j,] = Cgpi[[j]]@covariance@range.val
-    Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
-                   covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
-                   # coef.trend = kmcontrol$coef.trend,
-                   parinit = dc[j,], lower = kmcontrol$lower, upper = kmcontrol$upper,
-                   control=list(trace=0))
-    dc[j,] = Cgpi[[j]]@covariance@range.val
+    if(urate > 1){
+      Cgpi[[j]] = km(formula = kmcontrol$formula, design = X_unit, response = C_bilog[,j], 
+                     covtype =  kmcontrol$covtype, nugget = kmcontrol$nugget, 
+                     # coef.trend = kmcontrol$coef.trend,
+                     parinit = dc[j,], lower = kmcontrol$lower, upper = kmcontrol$upper,
+                     control=list(trace=0))
+      dc[j,] = Cgpi[[j]]@covariance@range.val
+    }
   }
   
   ## printing initial design
