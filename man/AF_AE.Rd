@@ -2,43 +2,42 @@
 % Please edit documentation in R/AF_AE.R
 \name{AF_AE}
 \alias{AF_AE}
-\title{Asymmetric Entropy}
+\title{Asymmetric entropy acquisition function}
 \usage{
 AF_AE(x, fgpi, fnorm, Cgpi, Cnorm, fmin, alpha1 = 1, alpha2 = 5, omega = 2/3)
 }
 \arguments{
-\item{x}{description}
+\item{x}{a vector containing a single candidate point; or a \code{matrix} with
+multiple candidate points}
 
-\item{fgpi}{description}
+\item{fgpi}{the GP surrogate model of the objective function}
 
-\item{fnorm}{description}
+\item{fnorm}{the maximum of the objective}
 
-\item{Cgpi}{description}
+\item{Cgpi}{the GP surrogate models of the constraints}
 
-\item{Cnorm}{description}
+\item{Cnorm}{the maxima of the constraints}
 
-\item{fmin}{description}
+\item{fmin}{the best objective value obtained so far}
 
-\item{alpha1}{description}
+\item{alpha1}{a specified weight for the EI part}
 
-\item{alpha2}{description}
+\item{alpha2}{a specified weight for the AE part}
 
-\item{omega}{description}
+\item{omega}{a mode location parameter}
 }
 \value{
-AF
+The AE value(s) at \code{x}.
 }
 \description{
-Asymmetric Entropy
-}
-\examples{
-B = rbind(c(0, 1), c(0, 1)) 
-
-
+The asymmetric entropy (AE) acquisition function of the AE method
 }
 \references{
 Lindberg, D. V. and H. K. Lee (2015). Optimization under constraints by applying an
 asymmetric entropy measure. \emph{Journal of Computational and Graphical Statistics} 24(2), 379-393.
+}
+\seealso{
+\code{\link[EPBO]{AF_ScaledEI}}, \code{\link[EPBO]{AF_EY}}, \code{\link[EPBO]{AF_OOSS}}
 }
 \author{
 Jiangyan Zhao \email{zhaojy2017@126.com}

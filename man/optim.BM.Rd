@@ -80,10 +80,9 @@ Black-box optimization under inequality constraints via an barrier functions.
 }
 \examples{
 # search space
-B = rbind(c(-2.25, 2.5), c(-2.25, 1.75))
+B = rbind(c(-2.25, 2.5), c(-2.5, 1.75))
 # Objective and constraint function for use 
-MTP = function(x, B=rbind(c(-2.25, 2.5), c(-2.5, 1.75))){
-  x = pmin(pmax(B[,1], x), B[,2])
+MTP = function(x){
   f = -(cos((x[1]-0.1)*x[2]))^2 - x[1]*sin(3*x[1]+x[2])
   t = atan2(x[1], x[2])
   c = x[1]^2 + x[2]^2 -((2*cos(t)-1/2*cos(2*t)-1/4*cos(3*t)-1/8*cos(4*t))^2) - ((2*sin(t))^2)

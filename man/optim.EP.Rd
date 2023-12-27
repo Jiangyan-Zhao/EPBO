@@ -17,18 +17,17 @@ optim.EP(
   ncandf = function(k) {
      k
  },
-  dg_start = c(0.1, 1e-06),
-  dlim = c(1e-04, 10),
+  dg_start = c(0.01 * sqrt(nrow(B)), 1e-06),
+  dlim = c(1e-04, 1) * sqrt(nrow(B)),
   plotprog = FALSE,
   ey_tol = 0.01,
-  AF_tol = sqrt(.Machine$double.eps),
   verb = 2,
   ...
 )
 }
 \arguments{
 \item{blackbox}{blackbox of an input (\code{x}), facilitating vectorization on a
-\code{matrix} \code{X} thereof,  returning a \code{list}
+\code{matrix} \code{X} thereof, returning a \code{list}
 with elements \code{$obj} containing the (scalar) objective value and \code{$c}
 containing a vector of evaluations of the (multiple) constraint function at \code{x}.}
 
@@ -59,8 +58,8 @@ optimization; must have \code{end > start}}
 each MLE/MAP update is performed for GP correlation lengthscale
 parameter(s)}
 
-\item{rho}{positive vector initial exact penalty parameter in the exact penalty function;
-the default setting of \code{rho = NULL} causes an automatic starting value to be chosen}
+\item{rho}{positive vector initial exact penalty parameters in the exact penalty function;
+the default setting of \code{rho = NULL} causes the automatic starting values to be chosen}
 
 \item{ncandf}{function taking a single integer indicating the optimization trial number \code{t}, where
 \code{start < t <= end}, and returning the number of search candidates (e.g., for
@@ -68,9 +67,18 @@ expected improvement calculations) at round \code{t}; the default setting
 allows the number of candidates to grow linearly with \code{t}}
 
 \item{dg_start}{2-vector giving starting values for the lengthscale and nugget parameters
-of the GP surrogate model(s) for constraints}
+of the GP surrogate model(s) for the objective and constraints}
 
 \item{dlim}{2-vector giving bounds for the lengthscale parameter(s) under MLE inference}
+
+\item{plotprog}{\code{logical} indicating if progress plots should be made after each inner iteration;
+the plots show four panels tracking the best valid objective, the ScaledEI or EY surface,
+the predictive mean and standard deviation of the objective function, over the first two input variables}
+
+\item{ey_tol}{a scalar proportion indicating how many of the ScaledEIs
+at \code{ncandf(t)} candidate locations must be non-zero to \dQuote{trust}
+that metric to guide search, reducing to an EY-based search instead
+(choosing that proportion to be one forces EY-based search)}
 
 \item{verb}{a non-negative integer indicating the verbosity level; the larger the value the
 more that is printed to the screen}
@@ -85,14 +93,14 @@ blackbox under optimization:
 \item{obj }{ vector giving the value of the objective for the input under consideration at each trial }
 \item{C }{ \code{matrix} giving the value of the constraint function for the input under consideration at each trial}
 \item{X }{ \code{matrix} giving the input values at which the blackbox function was evaluated }
-\item{idx_v}{index of the valid solutions}
-\item{AF_time}{the time required to compute the acquisition function}
+\item{feasibility}{vector giving the feasibility for the input under consideration at each trial }
+\item{rho}{vector giving the penalty parameters }
 }
 \description{
 Black-box optimization under mixed equality and inequality constraints via an exact penalty.
 }
 \details{
-Additional details...
+To be added.
 }
 \examples{
 ## Inequality constrained problem
@@ -100,8 +108,6 @@ Additional details...
 B = rbind(c(0, 1), c(0, 1)) 
 # Objective and constraint function for use 
 HSQ = function(x){
-  B = rbind(c(0, 1), c(0, 1))
-  x = pmin(pmax(B[,1], x), B[,2])
   t = function(z)
     return(exp(-(z-1)^2) + exp(-0.8*(z+1)^2) - 0.05*sin(8*(z+0.1)))
   herbtooth = -t(4*x[1]-2)*t(4*x[2]-2)

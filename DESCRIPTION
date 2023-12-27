@@ -1,14 +1,14 @@
 Package: EPBO
 Title: Bayesian Optimization via Exact Penalty
-Version: 0.0.11
-Date: 2023-11-20
+Version: 0.1.0
+Date: 2023-12-14
 Authors@R: 
   person(given = "Jiangyan", 
          family = "Zhao", 
          email = "zhaojy2017@126.com", 
          role = c("aut", "cre"))
-Description: Wrapper routines for blackbox optimization under mixed equality and inequality 
-  constraints via an exact penalty.
+Description: Wrapper routines for blackbox optimization under mixed (equality and/or inequality) 
+  constraints via exact penalty.
 License: AGPL (>= 3)
 URL: https://github.com/Jiangyan-Zhao/EPBO
 BugReports: https://github.com/Jiangyan-Zhao/EPBO/issues
@@ -16,7 +16,7 @@ Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.3
-Imports: laGP, tgp, DiceKriging, matrixStats, mvtnorm
+Imports: laGP, tgp
 Depends: R (>= 2.14)
 Suggests: 
     stats,

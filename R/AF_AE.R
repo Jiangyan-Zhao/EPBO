@@ -1,26 +1,21 @@
-#' @title Asymmetric Entropy
+#' @title Asymmetric entropy acquisition function
 #' 
-#' @description Asymmetric Entropy
+#' @description The asymmetric entropy (AE) acquisition function of the AE method
 #' 
-#' @param x description
+#' @param x a vector containing a single candidate point; or a \code{matrix} with 
+#' multiple candidate points
+#' @param fgpi the GP surrogate model of the objective function
+#' @param fnorm the maximum of the objective 
+#' @param Cgpi the GP surrogate models of the constraints
+#' @param Cnorm the maxima of the constraints
+#' @param fmin the best objective value obtained so far
+#' @param alpha1 a specified weight for the EI part
+#' @param alpha2 a specified weight for the AE part
+#' @param omega a mode location parameter
 #' 
-#' @param fgpi description
+#' @returns The AE value(s) at \code{x}. 
 #' 
-#' @param fnorm description
-#' 
-#' @param Cgpi description
-#' 
-#' @param Cnorm description
-#' 
-#' @param fmin description
-#' 
-#' @param alpha1 description
-#' 
-#' @param alpha2 description
-#' 
-#' @param omega description
-#' 
-#' @returns AF 
+#' @seealso \code{\link[EPBO]{AF_ScaledEI}}, \code{\link[EPBO]{AF_EY}}, \code{\link[EPBO]{AF_OOSS}}
 #' 
 #' @author Jiangyan Zhao \email{zhaojy2017@126.com}
 #' 
@@ -31,15 +26,7 @@
 #' @importFrom stats dnorm 
 #' @importFrom stats pnorm 
 #' @importFrom stats quantile
-#' 
-#' 
-#' 
-#' @export
-#' 
-#' @examples 
-#' B = rbind(c(0, 1), c(0, 1)) 
-#' 
-#' 
+
 
 AF_AE = function(x, fgpi, fnorm, Cgpi, Cnorm, fmin,
                  alpha1=1, alpha2=5, omega=2/3)

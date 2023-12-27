@@ -2,35 +2,34 @@
 % Please edit documentation in R/AF_OOSS.R
 \name{AF_OOSS}
 \alias{AF_OOSS}
-\title{Asymmetric Entropy}
+\title{One over sigma squared (OOSS) acquisition function}
 \usage{
 AF_OOSS(x, fgpi, fnorm, Cgpi, Cnorm)
 }
 \arguments{
-\item{x}{description}
+\item{x}{a vector containing a single candidate point; or a \code{matrix} with
+multiple candidate points}
 
-\item{fgpi}{description}
+\item{fgpi}{the GP surrogate model of the objective function}
 
-\item{fnorm}{description}
+\item{fnorm}{the maximum of the objective}
 
-\item{Cgpi}{description}
+\item{Cgpi}{the GP surrogate models of the constraints}
 
-\item{Cnorm}{description}
+\item{Cnorm}{the maxima of the constraints}
 }
 \value{
-AF
+The OOSS value(s) at \code{x}.
 }
 \description{
-Asymmetric Entropy
-}
-\examples{
-B = rbind(c(0, 1), c(0, 1)) 
-
-
+The one over sigma squared (OOSS) acquisition function of the barrier method
 }
 \references{
 Pourmohamad, T. and H. K. H. Lee (2022). Bayesian optimization via barrier functions.
 \emph{Journal of Computational and Graphical Statistics} 31(1), 74-83.
+}
+\seealso{
+\code{\link[EPBO]{AF_ScaledEI}}, \code{\link[EPBO]{AF_EY}}, \code{\link[EPBO]{AF_AE}}
 }
 \author{
 Jiangyan Zhao \email{zhaojy2017@126.com}

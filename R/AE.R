@@ -46,7 +46,7 @@
 #' \item{C }{ \code{matrix} giving the value of the constraint function for the input under consideration at each trial}
 #' \item{X }{ \code{matrix} giving the input values at which the blackbox function was evaluated }
 #' 
-#'  @seealso \code{\link[laGP]{optim.auglag}}, \code{\link[laGP]{optim.efi}}, \code{\link[EPBO]{optim.BM}}, \code{\link[EPBO]{optim.EP}}
+#' @seealso \code{\link[laGP]{optim.auglag}}, \code{\link[laGP]{optim.efi}}, \code{\link[EPBO]{optim.BM}}, \code{\link[EPBO]{optim.EP}}
 #'  
 #' @author Jiangyan Zhao \email{zhaojy2017@126.com}
 #' 
@@ -68,10 +68,9 @@
 #'
 #' @examples 
 #' # search space
-#' B = rbind(c(-2.25, 2.5), c(-2.25, 1.75))
+#' B = rbind(c(-2.25, 2.5), c(-2.5, 1.75))
 #' # Objective and constraint function for use 
-#' MTP = function(x, B=rbind(c(-2.25, 2.5), c(-2.5, 1.75))){
-#'   x = pmin(pmax(B[,1], x), B[,2])
+#' MTP = function(x){
 #'   f = -(cos((x[1]-0.1)*x[2]))^2 - x[1]*sin(3*x[1]+x[2])
 #'   t = atan2(x[1], x[2])
 #'   c = x[1]^2 + x[2]^2 -((2*cos(t)-1/2*cos(2*t)-1/4*cos(3*t)-1/8*cos(4*t))^2) - ((2*sin(t))^2)
@@ -84,14 +83,13 @@
 #' AE$xbest
 
 
-optim.AE = function(blackbox, B, 
-                    start=10, end=100, 
-                    Xstart=NULL, urate=10, 
-                    ncandf=function(k) { k }, 
-                    alpha1=1, alpha2=5, omega=2/3,
-                    dg.start=c(0.1,1e-6), ab=c(3/2,8), 
-                    dlim=sqrt(ncol(B))*c(1/100,10), 
-                    verb=2, ...){
+optim.AE = function(
+    blackbox, B, start=10, end=100, 
+    Xstart=NULL, urate=10, ncandf=function(k) { k }, 
+    alpha1=1, alpha2=5, omega=2/3,
+    dg.start=c(0.1,1e-6), ab=c(3/2,8), dlim=sqrt(ncol(B))*c(1/100,10), 
+    verb=2, ...)
+{
   ## check start
   if(start >= end) stop("must have start < end")
   ## get initial design

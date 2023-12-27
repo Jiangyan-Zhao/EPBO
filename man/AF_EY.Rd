@@ -7,32 +7,31 @@
 AF_EY(x, fgpi, fmean, fsd, Cgpi, rho, equal)
 }
 \arguments{
-\item{x}{description}
+\item{x}{a vector containing a single candidate point; or a \code{matrix} with
+multiple candidate points}
 
-\item{fgpi}{description}
+\item{fgpi}{the GP surrogate model of the objective function}
 
-\item{fmean}{description}
+\item{fmean}{the mean of the objective value}
 
-\item{fsd}{description}
+\item{fsd}{the standard deviation of the objective value}
 
-\item{Cgpi}{description}
+\item{Cgpi}{the GP surrogate models of the constraints}
 
-\item{rho}{description}
+\item{rho}{the penalty parameters}
 
 \item{equal}{an optional vector containing zeros and ones, whose length equals the number of
 constraints, specifying which should be treated as equality constraints (\code{1}) and
 which as inequality (\code{0})}
 }
 \value{
-AF
+The Predictive Mean at \code{x}.
 }
 \description{
-Predictive mean
+The predictive mean acquisition function of the EPBO method
 }
-\examples{
-B = rbind(c(0, 1), c(0, 1)) 
-
-
+\seealso{
+\code{\link[EPBO]{AF_ScaledEI}}, \code{\link[EPBO]{AF_OOSS}}, \code{\link[EPBO]{AF_AE}}
 }
 \author{
 Jiangyan Zhao \email{zhaojy2017@126.com}

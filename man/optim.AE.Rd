@@ -83,18 +83,15 @@ blackbox under optimization:
 \item{obj }{ vector giving the value of the objective for the input under consideration at each trial }
 \item{C }{ \code{matrix} giving the value of the constraint function for the input under consideration at each trial}
 \item{X }{ \code{matrix} giving the input values at which the blackbox function was evaluated }
-
-@seealso \code{\link[laGP]{optim.auglag}}, \code{\link[laGP]{optim.efi}}, \code{\link[EPBO]{optim.BM}}, \code{\link[EPBO]{optim.EP}}
 }
 \description{
 Black-box optimization under inequality constraints via an asymmetric entropy.
 }
 \examples{
 # search space
-B = rbind(c(-2.25, 2.5), c(-2.25, 1.75))
+B = rbind(c(-2.25, 2.5), c(-2.5, 1.75))
 # Objective and constraint function for use 
-MTP = function(x, B=rbind(c(-2.25, 2.5), c(-2.5, 1.75))){
-  x = pmin(pmax(B[,1], x), B[,2])
+MTP = function(x){
   f = -(cos((x[1]-0.1)*x[2]))^2 - x[1]*sin(3*x[1]+x[2])
   t = atan2(x[1], x[2])
   c = x[1]^2 + x[2]^2 -((2*cos(t)-1/2*cos(2*t)-1/4*cos(3*t)-1/8*cos(4*t))^2) - ((2*sin(t))^2)
@@ -109,6 +106,9 @@ AE$xbest
 \references{
 Lindberg, D. V. and H. K. Lee (2015). Optimization under constraints by applying an
 asymmetric entropy measure. \emph{Journal of Computational and Graphical Statistics} 24(2), 379-393.
+}
+\seealso{
+\code{\link[laGP]{optim.auglag}}, \code{\link[laGP]{optim.efi}}, \code{\link[EPBO]{optim.BM}}, \code{\link[EPBO]{optim.EP}}
 }
 \author{
 Jiangyan Zhao \email{zhaojy2017@126.com}

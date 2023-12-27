@@ -65,10 +65,9 @@
 #'
 #' @examples 
 #' # search space
-#' B = rbind(c(-2.25, 2.5), c(-2.25, 1.75))
+#' B = rbind(c(-2.25, 2.5), c(-2.5, 1.75))
 #' # Objective and constraint function for use 
-#' MTP = function(x, B=rbind(c(-2.25, 2.5), c(-2.5, 1.75))){
-#'   x = pmin(pmax(B[,1], x), B[,2])
+#' MTP = function(x){
 #'   f = -(cos((x[1]-0.1)*x[2]))^2 - x[1]*sin(3*x[1]+x[2])
 #'   t = atan2(x[1], x[2])
 #'   c = x[1]^2 + x[2]^2 -((2*cos(t)-1/2*cos(2*t)-1/4*cos(3*t)-1/8*cos(4*t))^2) - ((2*sin(t))^2)
@@ -81,13 +80,12 @@
 #' BM$xbest
 
 
-optim.BM = function(blackbox, B,
-                    start=10, end=100, 
-                    Xstart=NULL, urate=10, 
-                    ncandf=function(k) { k }, 
-                    dg.start=c(0.1,1e-6), ab=c(3/2,8), 
-                    dlim=sqrt(ncol(B))*c(1/100,10), 
-                    verb=2, ...){
+optim.BM = function(
+    blackbox, B, start=10, end=100, 
+    Xstart=NULL, urate=10, ncandf=function(k) { k }, 
+    dg.start=c(0.1,1e-6), ab=c(3/2,8), dlim=sqrt(ncol(B))*c(1/100,10), 
+    verb=2, ...)
+{
   ## check start
   if(start >= end) stop("must have start < end")
   ## get initial design

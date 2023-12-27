@@ -2,31 +2,25 @@
 % Please edit documentation in R/normalize.R
 \name{normalize}
 \alias{normalize}
-\title{Min-max normalize function}
+\title{Min-max normalize and un-normalize function}
 \usage{
 normalize(X, bounds)
 }
 \arguments{
-\item{X}{\code{matrix}}
+\item{X}{\code{matrix} the candidate points}
 
 \item{bounds}{2-column \code{matrix} describing the bounding box.
 the first column gives lower bounds and the second gives upper bounds}
 }
 \value{
-Min-max normalize X w.r.t. the provided bounds.
-If all elements of \code{X} are contained within \code{bounds},
-the normalized values will be contained within \code{[0, 1]^d}.
+Min-max normalize or un-normalized X w.r.t. the provided bounds.
+The normalized values will be contained within \code{[0, 1]^d},
+if all elements of \code{X} are contained within \code{bounds}.
+the un-normalized values will be contained within \code{bounds},
+if all elements of \code{X} are contained within \code{[0, 1]^d},
 }
 \description{
 Min-max normalize X w.r.t. the provided bounds.
-}
-\examples{
-X = matrix(rnorm(6), ncol=2)
-bounds = cbind(c(-1,-1), c(1,1))
-X_normalized = normalize(X, bounds)
-}
-\seealso{
-\code{\link[EPBO]{unnormalize}}
 }
 \author{
 Jiangyan Zhao \email{zhaojy2017@126.com}

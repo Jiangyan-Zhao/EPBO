@@ -1,19 +1,17 @@
-#' @title Asymmetric Entropy
+#' @title One over sigma squared (OOSS) acquisition function
 #' 
-#' @description Asymmetric Entropy
+#' @description The one over sigma squared (OOSS) acquisition function of the barrier method
 #' 
-#' @param x description
+#' @param x a vector containing a single candidate point; or a \code{matrix} with 
+#' multiple candidate points
+#' @param fgpi the GP surrogate model of the objective function
+#' @param fnorm the maximum of the objective 
+#' @param Cgpi the GP surrogate models of the constraints
+#' @param Cnorm the maxima of the constraints
 #' 
-#' @param fgpi description
+#' @returns The OOSS value(s) at \code{x}. 
 #' 
-#' @param fnorm description
-#' 
-#' @param Cgpi description
-#' 
-#' @param Cnorm description
-#' 
-#' 
-#' @returns AF 
+#' @seealso \code{\link[EPBO]{AF_ScaledEI}}, \code{\link[EPBO]{AF_EY}}, \code{\link[EPBO]{AF_AE}}
 #' 
 #' @author Jiangyan Zhao \email{zhaojy2017@126.com}
 #' 
@@ -21,15 +19,7 @@
 #' \emph{Journal of Computational and Graphical Statistics} 31(1), 74-83.
 #' 
 #' @import laGP
-#' 
-#' 
-#' 
-#' @export
-#' 
-#' @examples 
-#' B = rbind(c(0, 1), c(0, 1)) 
-#' 
-#' 
+
 
 AF_OOSS = function(x, fgpi, fnorm, Cgpi, Cnorm)
 {

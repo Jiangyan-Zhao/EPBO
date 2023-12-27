@@ -1,27 +1,22 @@
 #' @title ScaledEI acquisition function
 #' 
-#' @description Scaled expected improvement
+#' @description The Scaled expected improvement acquisition function of the EPBO method
 #' 
-#' @param x description
-#' 
-#' @param fgpi description
-#' 
-#' @param fmean description
-#' 
-#' @param fsd description
-#' 
-#' @param Cgpi description
-#' 
-#' @param epbest description
-#' 
-#' @param rho description
-#' 
+#' @param x a vector containing a single candidate point; or a \code{matrix} with 
+#' multiple candidate points
+#' @param fgpi the GP surrogate model of the objective function
+#' @param fmean the mean of the objective value
+#' @param fsd the standard deviation of the objective value
+#' @param Cgpi the GP surrogate models of the constraints
+#' @param epbest the best exact penalty value obtained so far
+#' @param rho the penalty parameters
 #' @param equal an optional vector containing zeros and ones, whose length equals the number of
 #' constraints, specifying which should be treated as equality constraints (\code{1}) and 
 #' which as inequality (\code{0}) 
 #' 
+#' @returns The ScaledEI value(s) at \code{x}.
 #' 
-#' @returns AF 
+#' @seealso \code{\link[EPBO]{AF_OOSS}}, \code{\link[EPBO]{AF_EY}}, \code{\link[EPBO]{AF_AE}}
 #' 
 #' @author Jiangyan Zhao \email{zhaojy2017@126.com}
 #' 
@@ -31,14 +26,6 @@
 #' @import laGP
 #' @importFrom stats dnorm 
 #' @importFrom stats pnorm 
-#' 
-#' 
-#' @export
-#' 
-#' @examples 
-#' B = rbind(c(0, 1), c(0, 1)) 
-#' 
-#' 
 
 AF_ScaledEI = function(x, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
 {
