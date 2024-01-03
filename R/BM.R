@@ -86,6 +86,10 @@ optim.BM = function(
     dg.start=c(0.1,1e-6), ab=c(3/2,8), dlim=sqrt(ncol(B))*c(1/100,10), 
     verb=2, ...)
 {
+  ## hide the warnings in the process
+  defaultW <- getOption("warn");
+  options(warn=-1);
+  
   ## check start
   if(start >= end) stop("must have start < end")
   ## get initial design
@@ -206,5 +210,6 @@ optim.BM = function(
   deleteGPsep(fgpi)
   for(j in 1:nc) deleteGPsep(Cgpi[j])
   
+  options(warn=defaultW)
   return(list(prog = prog, xbest = xbest, obj = obj, C=C, X = X))
 }
