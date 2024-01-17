@@ -50,10 +50,10 @@ have \code{ncol(Xstart) = nrow(B)}}
 each MLE/MAP update is performed for GP correlation lengthscale
 parameter(s)}
 
-\item{ncandf}{function taking a single integer indicating the optimization trial number \code{t}, where
-\code{start < t <= end}, and returning the number of search candidates (e.g., for
-expected improvement calculations) at round \code{t}; the default setting
-allows the number of candidates to grow linearly with \code{t}}
+\item{ncandf}{function taking a single integer indicating the optimization trial number \code{k}, where
+\code{start < k <= end}, and returning the number of search candidates (e.g., for
+expected improvement calculations) at round \code{k}; the default setting
+allows the number of candidates to grow linearly with \code{k}}
 
 \item{alpha1}{weight for expected improvement (default: 1)}
 
@@ -78,9 +78,9 @@ more that is printed to the screen}
 \value{
 The output is a \code{list} summarizing the progress of the evaluations of the
 blackbox under optimization:
-\item{prog }{ vector giving the best feasible (\code{g(x) <= 0 && |h(x)| <= ethresh}) value of the objective over the trials }
-\item{xbest }{ vector giving the recommended solution}
-\item{obj }{ vector giving the value of the objective for the input under consideration at each trial }
+\item{prog }{ \code{vector} giving the best feasible (\code{g(x) <= 0 && |h(x)| <= ethresh}) value of the objective over the trials }
+\item{xbest }{ \code{vector} giving the recommended solution}
+\item{obj }{ \code{vector} giving the value of the objective for the input under consideration at each trial }
 \item{C }{ \code{matrix} giving the value of the constraint function for the input under consideration at each trial}
 \item{X }{ \code{matrix} giving the input values at which the blackbox function was evaluated }
 }

@@ -28,10 +28,10 @@
 #' parameter(s) 
 #' @param rho positive vector initial exact penalty parameters in the exact penalty function; 
 #' the default setting of \code{rho = NULL} causes the automatic starting values to be chosen
-#' @param ncandf function taking a single integer indicating the optimization trial number \code{t}, where
-#' \code{start < t <= end}, and returning the number of search candidates (e.g., for
-#' expected improvement calculations) at round \code{t}; the default setting
-#' allows the number of candidates to grow linearly with \code{t}
+#' @param ncandf function taking a single integer indicating the optimization trial number \code{k}, where
+#' \code{start < k <= end}, and returning the number of search candidates (e.g., for
+#' expected improvement calculations) at round \code{k}; the default setting
+#' allows the number of candidates to grow linearly with \code{k}
 #' @param dg_start 2-vector giving starting values for the lengthscale and nugget parameters
 #' of the GP surrogate model(s) for the objective and constraints
 #' @param dlim 2-vector giving bounds for the lengthscale parameter(s) under MLE inference
@@ -39,7 +39,7 @@
 #' the plots show four panels tracking the best valid objective, the ScaledEI or EY surface, 
 #' the predictive mean and standard deviation of the objective function, over the first two input variables
 #' @param ey_tol a scalar proportion indicating how many of the ScaledEIs 
-#' at \code{ncandf(t)} candidate locations must be non-zero to \dQuote{trust}
+#' at \code{ncandf(k)} candidate locations must be non-zero to \dQuote{trust}
 #' that metric to guide search, reducing to an EY-based search instead 
 #' (choosing that proportion to be one forces EY-based search)
 #' @param verb a non-negative integer indicating the verbosity level; the larger the value the
@@ -52,9 +52,9 @@
 #'
 #' @returns The output is a \code{list} summarizing the progress of the evaluations of the 
 #' blackbox under optimization:
-#'  \item{prog }{ vector giving the best feasible (\code{g(x) <= 0 && |h(x)| <= ethresh}) value of the objective over the trials }
-#'  \item{xbest }{ vector giving the recommended solution}
-#'  \item{obj }{ vector giving the value of the objective for the input under consideration at each trial }
+#'  \item{prog }{ \code{vector} giving the best feasible (\code{g(x) <= 0 && |h(x)| <= ethresh}) value of the objective over the trials }
+#'  \item{xbest }{ \code{vector} giving the recommended solution}
+#'  \item{obj }{ \code{vector} giving the value of the objective for the input under consideration at each trial }
 #'  \item{C }{ \code{matrix} giving the value of the constraint function for the input under consideration at each trial}
 #'  \item{X }{ \code{matrix} giving the input values at which the blackbox function was evaluated }
 #'  \item{feasibility}{vector giving the feasibility for the input under consideration at each trial }
@@ -289,7 +289,7 @@ optim.EP = function(
     cat("]; ybest (prog=", m2, ", ep=", epbest, ", since=", since, ")\n", sep="")
   }
   
-  AF_time = 0 # AF running time
+  # AF_time = 0 # AF running time
   
   ## iterating over the black box evaluations
   for (k in (start+1):end) {
