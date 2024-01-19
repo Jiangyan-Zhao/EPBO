@@ -44,15 +44,14 @@ AF_AE = function(x, fgpi, fnorm, Cgpi, Cnorm, fmin,
   ei = sigma_f*(d*pnorm(d) + dnorm(d))
   
   ## asymmetric entropy
-  PoF = matrix(NA, nrow = nrow(x), ncol = nc)
+  PoF = rep(1, ncand)
   for (j in 1:nc) {
     pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
     mu_C = pred_C$mean * Cnorm[j]
     sigma_C = sqrt(pred_C$s2) * Cnorm[j]
-    PoF[,j] = pnorm(0, mu_C, sigma_C)
+    PoF = PoF * pnorm(0, mu_C, sigma_C)
   }
-  p = apply(PoF, 1, prod)
-  Sa = 2*p*(1-p)/(p-2*omega*p+omega^2)
+  Sa = 2*PoF*(1-PoF)/(PoF-2*omega*PoF+omega^2)
   
   ## acquisition function
   AF = ei^alpha1 * Sa^alpha2

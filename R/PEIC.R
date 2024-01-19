@@ -1,6 +1,6 @@
-#' @title EI versus PoF
+#' @title PEIC: Pseudo expected improvement with constraints
 #' 
-#' @description Black-box optimization under inequality constraints via a bi-objective optimization.
+#' @description Black-box optimization under inequality constraints via the PEIC.
 #' 
 #' @param blackbox blackbox of an input (\code{x}), facilitating vectorization on a 
 #' \code{matrix} \code{X} thereof,  returning a \code{list} 
@@ -28,8 +28,9 @@
 #' lengthscale parameter during emulation(s) for the constraints
 #' @param dlim 2-vector giving bounds for the lengthscale parameter(s) under MLE/MAP inference,
 #' thereby augmenting the prior specification in \code{ab}
-#' @param plotPareto \code{logical} indicating if the Pareto plots should be made after each inner iteration;
-#' the plots show two panels tracking the Pareto front, and the Pareto set
+#' @param plotprog \code{logical} indicating if the Pareto plots should be made after each inner iteration;
+#' the plots show two panels tracking the best feasible objective values, 
+#' and the updating points in a single iteration in parallel
 #' @param verb a non-negative integer indicating the verbosity level; the larger the value the
 #' more that is printed to the screen
 #' @param ... additional arguments passed to \code{blackbox}
@@ -46,18 +47,16 @@
 #'  
 #' @author Jiangyan Zhao \email{zhaojy2017@126.com}
 #' 
-#' @references Parr, J. M., A. J. Keane, A. I. Forrester, and C. M. Holden (2012). Infill sampling criteria
-#' for surrogate-based optimization with constraint handling. \emph{Engineering Optimization} 44(10), 1147–1166.
+#' @references Qian, J., Y. Cheng, J. Zhang, J. Liu, and D. Zhan (2021). A parallel constrained efficient global 
+#' optimization algorithm for expensive constrained optimization problems. \emph{Engineering Optimization} 53(2), 300–320.
 #' 
 #' @keywords optimize
 #' @keywords design
 #' 
 #' @import laGP
 #' @import tgp
-#' @import mco
+#' @importFrom pso psoptim
 #' @importFrom stats dnorm
-#' @importFrom stats kmeans
-#' @importFrom stats optim 
 #' @importFrom stats pnorm 
 #' @importFrom stats sd
 #' @importFrom utils tail
@@ -74,19 +73,19 @@
 #'   c = x[1]^2 + x[2]^2 -((2*cos(t)-1/2*cos(2*t)-1/4*cos(3*t)-1/8*cos(4*t))^2) - ((2*sin(t))^2)
 #'   return(list(obj=f, c=c))
 #' }
-#' EIvsPoF = optim.EIvsPoF(MTP, B, verb = 0)
+#' PEIC = optim.PEIC(MTP, B, verb = 0)
 #' # progress, best feasible value of the objective over the trials
-#' EIvsPoF$prog
+#' PEIC$prog
 #' # the recommended solution
-#' EIvsPoF$xbest
+#' PEIC$xbest
 
 
-optim.EIvsPoF = function(
+optim.PEIC = function(
     blackbox, B, nprl=3, start=10, end=100, 
     Xstart=NULL, urate=ceiling(10/nprl),
     dg_start=c(1e-2*sqrt(nrow(B)), 1e-6), 
     dlim=c(1e-4, 1)*sqrt(nrow(B)), 
-    plotPareto=FALSE, verb=2, ...)
+    plotprog=FALSE, verb=2, ...)
 {
   ## check start
   if(start >= end) stop("must have start < end")
@@ -113,7 +112,7 @@ optim.EIvsPoF = function(
   obj[1] = out$obj; C[1, ] = bilog(out$c)
   feasibility[1] = all(C[1,] <= 0)
   prog[1] = ifelse(feasibility[1], obj[1], Inf)
-
+  
   ## remainder of starting run
   for(k in 2:start) { ## now that problem is vectorized we can probably remove for
     out = blackbox(X[k,], ...)
@@ -188,51 +187,18 @@ optim.EIvsPoF = function(
     }
     
     
-    ## Approximate the Pareto front and Pareto set via the NSGA-II algorithm.
-    
-    ## mco package
-    AF_Pareto = nsga2(fn=AF_EIvsPoF, idim=dim, odim=2,
-                      fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2,
-                      generations=100, popsize=200,
-                      cprob=0.8, mprob=0.1,
-                      lower.bounds=rep(0, dim),
-                      upper.bounds=rep(1, dim))
-    AF_PF = AF_Pareto$value # Pareto front
-    AF_PS = AF_Pareto$par   # Pareto set
-    
-    ## rmoo package
-    # AF_Pareto = nsga2(type = "real-valued",
-    #                   fitness = AF_EIvsPoF,
-    #                   fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2,
-    #                   lower = rep(0, dim), upper = rep(1, dim),
-    #                   popSize = 100,
-    #                   nObj = 2,
-    #                   pcrossover = 0.8,
-    #                   pmutation = 0.1,
-    #                   monitor = FALSE,
-    #                   maxiter = 100,
-    #                   seed=1)
-    # AF_PF = AF_Pareto@fitness
-    # AF_PS = AF_Pareto@population
-    
-
-    
-    ## Perform k-means clustering on the AF's Pareto front
-    # Here, a small disturbance is added to PF to avoid PS aggregation, 
-    # resulting in clustering failure.
-    AF_PF_dis = AF_PF + rnorm(length(AF_PF), mean = 0, sd = 0.001)
-    AF_cl = kmeans(x = AF_PF_dis, centers = nprl, nstart = 25)
-    for (cl in 1:nprl) {
-      ## a single member with highest EIC is selected from each cluster
-      cl_idx = which(AF_cl$cluster == cl)
-      cl_PS = matrix(AF_PS[cl_idx, ], nrow = length(cl_idx))
-      cl_PF = matrix(AF_PF[cl_idx, ], nrow = length(cl_idx))
-      # cl_EIC = rowSums(-cl_PF)
-      cl_EIC = exp(-cl_PF[,1]) * (-cl_PF[,2])
-      max_EIC_idx = which.max(cl_EIC)
+    ## Maximize the PEIC AF via the PSO algorithm.
+    for (prl in 1:nprl) {
+      out_AF = psoptim(rep(NA,dim), fn = AF_PEIC,
+                       fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2,
+                       df=df, point_update=tail(X_unit, prl-1),
+                       lower = rep(0, dim), upper = rep(1, dim),
+                       control = list(maxit = 100,   # generations
+                                      s = 200,       # swarm size
+                                      fnscale = -1)) # for maximization.
       
       ## calculate next point
-      xnext_unit = cl_PS[max_EIC_idx, ]
+      xnext_unit = matrix(out_AF$par, nrow = 1)
       X_unit = rbind(X_unit, xnext_unit)
       xnext = unnormalize(xnext_unit, B)
       X = rbind(X, xnext)
@@ -260,7 +226,7 @@ optim.EIvsPoF = function(
       
       ## progress meter
       if(verb > 0) {
-        cat("k=", k+cl, " ", sep="")
+        cat("k=", k+prl, " ", sep="")
         cat("; xnext ([", paste(signif(xnext,3), collapse=" "), 
             "], feasibility=", feasibility[k], ")\n", sep="")
         cat(" xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
@@ -268,20 +234,22 @@ optim.EIvsPoF = function(
         cat(", since=", since, ")\n", sep="")
       }
     }
+
     
     ## plot progress
-    if (plotPareto) {
+    if (plotprog) {
       par(ps=16, mfrow=c(1,2))
-      # Pareto Front
-      plot(AF_PF, ylim = c(-1, 0), 
-           pch = 1 + AF_cl$cluster, col = 1 + AF_cl$cluster,
-           xlab="-logEI", ylab="-PoF", main="Objective space")
-      # Pareto Set
-      plot(unnormalize(AF_PS[,1:2], B), 
-           xlim = B[1,], ylim = B[2,], cex = 0.6,
-           xlab = "x1", ylab = "x2", main="Parameter space")
-      points(tail(X[,1:2], nprl), 
-             col = 1 + (1:nprl), pch = 18, cex = 1.6)
+      ## progress
+      if(is.finite(m2)){
+        plot(prog, type="l", lwd=1.6, main="progress")
+      }else{
+        plot(prog, type="l", ylim=range(obj), lwd=1.6, main="progress")
+      }
+      # the updating points per iteration in parallel
+      plot(tail(X[,1:2], nprl), 
+           xlim = B[1,], ylim = B[2,], pch = 18,
+           xlab = "x1", ylab = "x2", main="updating points")
+      text(tail(X[,1:2], nprl), labels = seq_len(nprl), pos=4)
       par(mfrow=c(1,1))
     }
     

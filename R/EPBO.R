@@ -36,7 +36,7 @@
 #' of the GP surrogate model(s) for the objective and constraints
 #' @param dlim 2-vector giving bounds for the lengthscale parameter(s) under MLE inference
 #' @param plotprog \code{logical} indicating if progress plots should be made after each inner iteration;
-#' the plots show four panels tracking the best valid objective, the ScaledEI or EY surface, 
+#' the plots show four panels tracking the best feasible objective values, the ScaledEI or EY surface, 
 #' the predictive mean and standard deviation of the objective function, over the first two input variables
 #' @param ey_tol a scalar proportion indicating how many of the ScaledEIs 
 #' at \code{ncandf(k)} candidate locations must be non-zero to \dQuote{trust}

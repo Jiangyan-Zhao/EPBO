@@ -72,7 +72,7 @@ of the GP surrogate model(s) for the objective and constraints}
 \item{dlim}{2-vector giving bounds for the lengthscale parameter(s) under MLE inference}
 
 \item{plotprog}{\code{logical} indicating if progress plots should be made after each inner iteration;
-the plots show four panels tracking the best valid objective, the ScaledEI or EY surface,
+the plots show four panels tracking the best feasible objective values, the ScaledEI or EY surface,
 the predictive mean and standard deviation of the objective function, over the first two input variables}
 
 \item{ey_tol}{a scalar proportion indicating how many of the ScaledEIs
