@@ -269,7 +269,7 @@ optim.EIvsPoF = function(
       }
     }
     
-    ## plot progress
+    ## plot Pareto Front and Pareto set
     if (plotPareto) {
       par(ps=16, mfrow=c(1,2))
       # Pareto Front

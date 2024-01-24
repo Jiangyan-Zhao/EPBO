@@ -188,14 +188,15 @@ optim.PEIC = function(
     
     
     ## Maximize the PEIC AF via the PSO algorithm.
+    m2_old = m2
     for (prl in 1:nprl) {
       out_AF = psoptim(rep(NA,dim), fn = AF_PEIC,
-                       fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2,
+                       fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2_old,
                        df=df, point_update=tail(X_unit, prl-1),
                        lower = rep(0, dim), upper = rep(1, dim),
                        control = list(maxit = 100,   # generations
                                       s = 200,       # swarm size
-                                      fnscale = -1)) # for maximization.
+                                      fnscale = -1)) # for maximization
       
       ## calculate next point
       xnext_unit = matrix(out_AF$par, nrow = 1)
@@ -227,6 +228,7 @@ optim.PEIC = function(
       ## progress meter
       if(verb > 0) {
         cat("k=", k+prl, " ", sep="")
+        cat("PEIC=", paste(signif(out_AF$value,3), collapse=" "))
         cat("; xnext ([", paste(signif(xnext,3), collapse=" "), 
             "], feasibility=", feasibility[k], ")\n", sep="")
         cat(" xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
@@ -241,9 +243,11 @@ optim.PEIC = function(
       par(ps=16, mfrow=c(1,2))
       ## progress
       if(is.finite(m2)){
-        plot(prog, type="l", lwd=1.6, main="progress")
+        plot(prog, type="l", lwd=1.6, 
+             xlab="n", ylab="BFOV", main="progress")
       }else{
-        plot(prog, type="l", ylim=range(obj), lwd=1.6, main="progress")
+        plot(prog, type="l", ylim=range(obj), lwd=1.6, 
+             xlab="n", ylab="BFOV", main="progress")
       }
       # the updating points per iteration in parallel
       plot(tail(X[,1:2], nprl), 
