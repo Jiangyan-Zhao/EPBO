@@ -193,8 +193,9 @@ optim.EIvsPoF = function(
     ## mco package
     AF_Pareto = nsga2(fn=AF_EIvsPoF, idim=dim, odim=2,
                       fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2,
-                      generations=100, popsize=200,
-                      cprob=0.8, mprob=0.1,
+                      generations=100, popsize=100*dim,
+                      cprob=0.8, cdist=20,
+                      mprob=1/dim, mdist=20,
                       lower.bounds=rep(0, dim),
                       upper.bounds=rep(1, dim))
     AF_PF = AF_Pareto$value # Pareto front

@@ -30,15 +30,15 @@ AF_SDY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
   ncand = nrow(x) # number of the candidate points
   
   ## objective
-  pred_f = predGPsep(fgpi, x, lite=TRUE, nonug = TRUE)
+  pred_f = predGPsep(fgpi, x, lite=TRUE)
   # mu_f = pred_f$mean * fsd + fmean
-  sigma_f = sqrt(pred_f$s2) * fsd
+  # sigma_f = sqrt(pred_f$s2) * fsd
   
   ## constraints
   nc = length(Cgpi) # number of the constraint
   EV = VV = matrix(NA, nc, ncand)
   for (j in 1:nc) {
-    pred_C = predGPsep(Cgpi[j], x, lite=TRUE, nonug = TRUE)
+    pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
     mu_C = pred_C$mean
     sigma_C = sqrt(pred_C$s2)
     dC = mu_C/sigma_C
@@ -55,7 +55,7 @@ AF_SDY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
   VV = pmax(0, VV)
   
   ## the predictive standard deviation of the exact penalty surrogate
-  SDY = sqrt(sigma_f^2 + rho^2 %*% VV)
+  SDY = sqrt(pred_f$s2 + rho^2 %*% VV)
   SDY = pmax(.Machine$double.xmin, SDY)
   
   return(log(SDY)) # log scale

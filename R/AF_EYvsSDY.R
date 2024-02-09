@@ -33,10 +33,10 @@ AF_EYvsSDY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
   EY = AF_EY(x, fgpi, fmean, fsd, Cgpi, rho, equal)
   
   ## the predictive standard deviation of the exact penalty surrogate
-  SDY = AF_SDY(x, fgpi, fmean, fsd, Cgpi, rho, equal) # log scale
+  logSDY = AF_SDY(x, fgpi, fmean, fsd, Cgpi, rho, equal) # log scale
   
   ## both criterion are minimized
-  AF = c(EY, -SDY)
+  AF = c(-logSDY, EY)
   
   return(AF) 
 }

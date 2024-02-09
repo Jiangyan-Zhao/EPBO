@@ -195,7 +195,7 @@ optim.PEIC = function(
                        df=df, point_update=tail(X_unit, prl-1),
                        lower = rep(0, dim), upper = rep(1, dim),
                        control = list(maxit = 100,   # generations
-                                      s = 200,       # swarm size
+                                      s = 100,       # swarm size
                                       fnscale = -1)) # for maximization
       
       ## calculate next point

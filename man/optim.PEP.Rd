@@ -8,6 +8,7 @@ optim.PEP(
   blackbox,
   B,
   nprl = 3,
+  kappa = 1,
   equal = FALSE,
   ethresh = 0.01,
   Xstart = NULL,
@@ -18,7 +19,6 @@ optim.PEP(
   dg_start = c(0.01 * sqrt(nrow(B)), 1e-06),
   dlim = c(1e-04, 1) * sqrt(nrow(B)),
   plotPareto = FALSE,
-  ey_tol = 0.01,
   verb = 2,
   ...
 )
@@ -34,6 +34,8 @@ of the \code{matrix} determines the input dimension (\code{length(x)} in \code{b
 the first column gives lower bounds and the second gives upper bounds}
 
 \item{nprl}{positive integer giving the number of the parallel points per iteration}
+
+\item{kappa}{positive weighted parameter in the LCB acquistion function}
 
 \item{equal}{an optional vector containing zeros and ones, whose length equals the number of
 constraints, specifying which should be treated as equality constraints (\code{1}) and
@@ -69,11 +71,6 @@ of the GP surrogate model(s) for the objective and constraints}
 \item{plotPareto}{\code{logical} indicating if progress plots should be made after each inner iteration;
 the plots show four panels tracking the best feasible objective values, the ScaledEI or EY surface,
 the predictive mean and standard deviation of the objective function, over the first two input variables}
-
-\item{ey_tol}{a scalar proportion indicating how many of the ScaledEIs
-at \code{ncandf(k)} candidate locations must be non-zero to \dQuote{trust}
-that metric to guide search, reducing to an EY-based search instead
-(choosing that proportion to be one forces EY-based search)}
 
 \item{verb}{a non-negative integer indicating the verbosity level; the larger the value the
 more that is printed to the screen}

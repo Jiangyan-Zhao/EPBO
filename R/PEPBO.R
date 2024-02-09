@@ -10,6 +10,7 @@
 #' of the \code{matrix} determines the input dimension (\code{length(x)} in \code{blackbox(x)}); 
 #' the first column gives lower bounds and the second gives upper bounds
 #' @param nprl positive integer giving the number of the parallel points per iteration
+#' @param kappa positive weighted parameter in the LCB acquistion function
 #' @param equal an optional vector containing zeros and ones, whose length equals the number of
 #' constraints, specifying which should be treated as equality constraints (\code{1}) and 
 #' which as inequality (\code{0}) 
@@ -35,10 +36,6 @@
 #' @param plotPareto \code{logical} indicating if progress plots should be made after each inner iteration;
 #' the plots show four panels tracking the best feasible objective values, the ScaledEI or EY surface, 
 #' the predictive mean and standard deviation of the objective function, over the first two input variables
-#' @param ey_tol a scalar proportion indicating how many of the ScaledEIs 
-#' at \code{ncandf(k)} candidate locations must be non-zero to \dQuote{trust}
-#' that metric to guide search, reducing to an EY-based search instead 
-#' (choosing that proportion to be one forces EY-based search)
 #' @param verb a non-negative integer indicating the verbosity level; the larger the value the
 #' more that is printed to the screen
 #' @param ... additional arguments passed to \code{blackbox}
@@ -162,14 +159,15 @@
 #' EPBO$xbest
 
 optim.PEP = function(
-    blackbox, B, nprl=3, equal=FALSE, ethresh=1e-2, 
+    blackbox, B, nprl=3, kappa = 1,
+    equal=FALSE, ethresh=1e-2, 
     Xstart=NULL, start=10, end=100, urate=ceiling(10/nprl), rho=NULL, 
     dg_start=c(1e-2*sqrt(nrow(B)), 1e-6), 
     dlim=c(1e-4, 1)*sqrt(nrow(B)), 
-    plotPareto=FALSE, ey_tol=1e-2,
-    verb=2, ...)
+    plotPareto=FALSE,verb=2, ...)
 {
   ## check start
+  if(nprl < 3) stop("must have nprl > 3")
   if(start >= end) stop("must have start < end")
   if(start == 0 & is.null(Xstart)) stop("must have start>0 or given Xstart")
   
@@ -323,106 +321,42 @@ optim.PEP = function(
                        paste(signif(rho,3), collapse=", "), ")\n", sep="")
     }
     
-    if(nprl > 2){
-      ## 1. Approximate the Pareto front and Pareto set via the NSGA-II algorithm.
-      AF_Pareto = nsga2(fn=AF_EYvsSDY, idim=dim, odim=2,
-                        fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, 
-                        rho=rho, equal=equal,
-                        generations=100, popsize=200,
-                        cprob=0.8, mprob=0.1,
-                        lower.bounds=rep(0, dim),
-                        upper.bounds=rep(1, dim))
-      AF_PF = AF_Pareto$value # Pareto front
-      AF_PS = AF_Pareto$par   # Pareto set
+    ## Approximate the Pareto front and Pareto set via the NSGA-II algorithm.
+    AF_Pareto = nsga2(fn=AF_EYvsSDY, idim=dim, odim=2,
+                      fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, 
+                      rho=rho, equal=equal,
+                      generations=100, popsize=100*dim,
+                      cprob=0.8, cdist=20,
+                      mprob=1/dim, mdist=20,
+                      lower.bounds=rep(0, dim),
+                      upper.bounds=rep(1, dim))
+    AF_PF = AF_Pareto$value # Pareto front (-logSDY, EY)
+    AF_PS = AF_Pareto$par   # Pareto set
+    
+    ## Perform k-means clustering on the AF's Pareto front
+    AF_cl = kmeans(x = AF_PF, centers = nprl, nstart = 25)
+    
+    # kappa = 1 + pnorm(6 * (k - start) / (end - start) - 3)
+    # if(verb > 0) { cat("  kappa=", kappa, " ", sep="", "\n")}
+    
+    cl_PF_selected = matrix(NA, nrow = nprl, ncol = 2)
+    for (cl in 1:nprl) {
+      ## a single member with highest EIC is selected from each cluster
+      cl_idx = which(AF_cl$cluster == cl)
+      cl_PS = matrix(AF_PS[cl_idx, ], nrow = length(cl_idx))
+      cl_PF = matrix(AF_PF[cl_idx, ], nrow = length(cl_idx))
       
-      ## Perform k-means clustering on the AF's Pareto front
-      # Here, a small disturbance is added to PF to avoid PS aggregation, 
-      # resulting in clustering failure.
-      AF_PF_dis = AF_PF + rnorm(length(AF_PF), mean = 0, sd = 0.001)
-      AF_cl = kmeans(x = AF_PF_dis, centers = nprl-2, nstart = 25)
-      for (cl in 1:(nprl-2)) {
-        ## a single member with highest EIC is selected from each cluster
-        cl_idx = which(AF_cl$cluster == cl)
-        cl_PS = matrix(AF_PS[cl_idx, ], nrow = length(cl_idx))
-        cl_PF = matrix(AF_PF[cl_idx, ], nrow = length(cl_idx))
-        
-        ## LCB criterion
-        kappa = 2 
-        cl_LCB = cl_PF[,1] - kappa * exp(-cl_PF[,2])
-        min_LCB_idx = which.min(cl_LCB)
-        
-        # calculate next point
-        xnext_unit = cl_PS[min_LCB_idx, ]
-        X_unit = rbind(X_unit, xnext_unit)
-        xnext = unnormalize(xnext_unit, B)
-        X = rbind(X, xnext)
-      }
+      ## LCB criterion
+      cl_LCB = cl_PF[,2] - kappa * exp(-cl_PF[,1])
+      min_LCB_idx = which.min(cl_LCB)
       
-      ## 2. Minimize the predictive mean via the PSO algorithm.
-      out_EY = psoptim(rep(NA,dim), fn = AF_EY,
-                       fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, 
-                       rho=rho, equal=equal,
-                       lower = rep(0, dim), upper = rep(1, dim),
-                       control = list(maxit = 100,   # generations
-                                      s = 200))       # swarm size
+      cl_PF_selected[cl,] = cl_PF[min_LCB_idx,]
+      
       # calculate next point
-      xnext_unit = matrix(out_EY$par, nrow = 1)
+      xnext_unit = cl_PS[min_LCB_idx, ]
       X_unit = rbind(X_unit, xnext_unit)
       xnext = unnormalize(xnext_unit, B)
       X = rbind(X, xnext)
-      
-      ## 3. Maximize the predictive standard deviation via the PSO algorithm.
-      out_SDY = psoptim(rep(NA,dim), fn = AF_SDY,
-                        fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, 
-                        rho=rho, equal=equal,
-                        lower = rep(0, dim), upper = rep(1, dim),
-                        control = list(maxit = 100,   # generations
-                                       s = 200,       # swarm size
-                                       fnscale = -1)) # for maximization
-      # calculate next point
-      xnext_unit = matrix(out_SDY$par, nrow = 1)
-      X_unit = rbind(X_unit, xnext_unit)
-      xnext = unnormalize(xnext_unit, B)
-      X = rbind(X, xnext)
-      
-      if(verb > 0) {
-        cat("   min.EY=", paste(signif(out_EY$value,3), collapse=" "), sep="")
-        cat("     max.logSDY=", paste(signif(out_SDY$value,3), collapse=" "), sep="", "\n")
-      }
-    }else{
-      ## 1. Approximate the Pareto front and Pareto set via the NSGA-II algorithm.
-      AF_Pareto = nsga2(fn=AF_EYvsSDY, idim=dim, odim=2,
-                        fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, 
-                        rho=rho, equal=equal,
-                        generations=100, popsize=200,
-                        cprob=0.8, mprob=0.1,
-                        lower.bounds=rep(0, dim),
-                        upper.bounds=rep(1, dim))
-      AF_PF = AF_Pareto$value # Pareto front
-      AF_PS = AF_Pareto$par   # Pareto set
-      
-      ## Perform k-means clustering on the AF's Pareto front
-      # Here, a small disturbance is added to PF to avoid PS aggregation, 
-      # resulting in clustering failure.
-      AF_PF_dis = AF_PF + rnorm(length(AF_PF), mean = 0, sd = 0.001)
-      AF_cl = kmeans(x = AF_PF_dis, centers = nprl, nstart = 25)
-      for (cl in 1:nprl) {
-        ## a single member with highest EIC is selected from each cluster
-        cl_idx = which(AF_cl$cluster == cl)
-        cl_PS = matrix(AF_PS[cl_idx, ], nrow = length(cl_idx))
-        cl_PF = matrix(AF_PF[cl_idx, ], nrow = length(cl_idx))
-        
-        ## LCB criterion
-        kappa = 2 
-        cl_LCB = cl_PF[,1] - kappa * exp(-cl_PF[,2])
-        min_LCB_idx = which.min(cl_LCB)
-        
-        # calculate next point
-        xnext_unit = cl_PS[min_LCB_idx, ]
-        X_unit = rbind(X_unit, xnext_unit)
-        xnext = unnormalize(xnext_unit, B)
-        X = rbind(X, xnext)
-      }
     }
     
     ## new runs
@@ -475,6 +409,49 @@ optim.PEP = function(
     }
     rho = pmax(rho_new, rho)
     
+    ## plot progress, Pareto Front, and Pareto set
+    if(plotPareto) {
+      par(ps=16, mfrow=c(2,2))
+      ## progress
+      if(is.finite(m2)){
+        plot(prog, type="l", lwd=1.6, 
+             xlab="n", ylab="BFOV", main="progress")
+      }else{
+        plot(prog, type="l", ylim=range(obj), lwd=1.6, 
+             xlab="n", ylab="BFOV", main="progress")
+      }
+      
+      ## legend
+      plot.new()
+      legend("center", bty="n",
+             # title="legend in parameter space",
+             legend=c(
+               "Pareto set",
+               "previous points", 
+               paste0("selected updated (q=", nprl, ")")),
+             pch=c(4,16,18), 
+             pt.cex = c(1,1.2,1.5), pt.lwd = c(2,1,1))
+      
+      # Pareto Front
+      plot(AF_PF, 
+           pch = 4, col = AF_cl$cluster,
+           lwd = 1.5, cex = 0.6,
+           xlab="-logSDY", ylab="EY", main="Objective space")
+      points(cl_PF_selected, 
+             col = 1:nprl, pch = 18, cex = 2)
+      
+      # Pareto Set
+      plot(unnormalize(AF_PS[,1:2], B), 
+           xlim = B[1,], ylim = B[2,], 
+           pch = 4, col = AF_cl$cluster,
+           lwd = 1.5, cex = 0.6,
+           xlab = "x1", ylab = "x2", main="Parameter space")
+      points(tail(X[,1:2], nprl), 
+             col = 1:nprl, pch = 18, cex = 2)
+      points(X[1:k,1:2], pch = 16, cex = 0.6)
+      par(mfrow=c(1,1))
+    }
+    
     ## update GP fits
     updateGPsep(fgpi, tail(X_unit, nprl), (tail(obj,nprl)-fmean)/fsd, verb = 0)
     df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
@@ -496,30 +473,6 @@ optim.PEP = function(
         Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d = dlim[1], g = dg_start[2], dK=TRUE)
         dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
       }
-    }
-    
-    ## plot progress, Pareto Front, and Pareto set
-    if(plotPareto) {
-      par(ps=16, mfrow=c(1,3))
-      ## progress
-      if(is.finite(m2)){
-        plot(prog, type="l", lwd=1.6, 
-             xlab="n", ylab="BFOV", main="progress")
-      }else{
-        plot(prog, type="l", ylim=range(obj), lwd=1.6, 
-             xlab="n", ylab="BFOV", main="progress")
-      }
-      # Pareto Front
-      plot(AF_PF,  
-           pch = 1 + AF_cl$cluster, col = 1 + AF_cl$cluster,
-           xlab="-logSDY", ylab="EY", main="Objective space")
-      # Pareto Set
-      plot(unnormalize(AF_PS[,1:2], B), 
-           xlim = B[1,], ylim = B[2,], cex = 0.6,
-           xlab = "x1", ylab = "x2", main="Parameter space")
-      points(tail(X[,1:2], nprl), 
-             col = 1 + (1:nprl), pch = 18, cex = 2)
-      par(mfrow=c(1,1))
     }
   }
   
