@@ -194,29 +194,13 @@ optim.EIvsPoF = function(
     AF_Pareto = nsga2(fn=AF_EIvsPoF, idim=dim, odim=2,
                       fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2,
                       generations=100, popsize=100*dim,
-                      cprob=0.8, cdist=20,
-                      mprob=1/dim, mdist=20,
+                      cprob=0.9, cdist=20,
+                      mprob=0.1, mdist=20,
                       lower.bounds=rep(0, dim),
                       upper.bounds=rep(1, dim))
     AF_PF = AF_Pareto$value # Pareto front
     AF_PS = AF_Pareto$par   # Pareto set
     
-    ## rmoo package
-    # AF_Pareto = nsga2(type = "real-valued",
-    #                   fitness = AF_EIvsPoF,
-    #                   fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2,
-    #                   lower = rep(0, dim), upper = rep(1, dim),
-    #                   popSize = 100,
-    #                   nObj = 2,
-    #                   pcrossover = 0.8,
-    #                   pmutation = 0.1,
-    #                   monitor = FALSE,
-    #                   maxiter = 100,
-    #                   seed=1)
-    # AF_PF = AF_Pareto@fitness
-    # AF_PS = AF_Pareto@population
-    
-
     
     ## Perform k-means clustering on the AF's Pareto front
     # Here, a small disturbance is added to PF to avoid PS aggregation, 

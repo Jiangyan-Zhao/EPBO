@@ -23,6 +23,11 @@
 #' @references Noe, U. and D. Husmeier (2018). On a new improvement-based acquisition function 
 #' for Bayesian optimization. \emph{arXiv:1808.06918}.
 #' 
+#' @references Jiangyan Zhao and Jin Xu (07 Feb 2024): Bayesian Optimization via Exact Penalty, 
+#' \emph{Technometrics}, DOI: 10.1080/00401706.2024.2315937
+#' 
+#' @keywords acquistionFunction
+#' 
 #' @import laGP
 #' @importFrom stats dnorm 
 #' @importFrom stats pnorm 

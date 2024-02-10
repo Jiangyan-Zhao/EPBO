@@ -19,9 +19,16 @@
 #' 
 #' @author Jiangyan Zhao \email{zhaojy2017@126.com}
 #' 
+#' @references Jiangyan Zhao and Jin Xu (07 Feb 2024): Bayesian Optimization via Exact Penalty, 
+#' \emph{Technometrics}, DOI: 10.1080/00401706.2024.2315937
+#' 
+#' @keywords acquistionFunction
+#' 
 #' @import laGP
 #' @importFrom stats dnorm 
 #' @importFrom stats pnorm 
+#' 
+#' @export
 
 
 AF_EY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)

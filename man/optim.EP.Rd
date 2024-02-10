@@ -182,6 +182,10 @@ EPBO$prog
 # the recommended solution
 EPBO$xbest
 }
+\references{
+Jiangyan Zhao and Jin Xu (07 Feb 2024): Bayesian Optimization via Exact Penalty,
+\emph{Technometrics}, DOI: 10.1080/00401706.2024.2315937
+}
 \seealso{
 \code{\link[laGP]{optim.auglag}}, \code{\link[laGP]{optim.efi}}, \code{\link[EPBO]{optim.AE}}, \code{\link[EPBO]{optim.BM}}
 }

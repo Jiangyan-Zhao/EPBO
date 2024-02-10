@@ -22,10 +22,14 @@
 #' @references Lindberg, D. V. and H. K. Lee (2015). Optimization under constraints by applying an 
 #' asymmetric entropy measure. \emph{Journal of Computational and Graphical Statistics} 24(2), 379-393.
 #' 
+#' @keywords acquistionFunction
+#' 
 #' @import laGP
 #' @importFrom stats dnorm 
 #' @importFrom stats pnorm 
 #' @importFrom stats quantile
+#' 
+#' @export
 
 
 AF_AE = function(x, fgpi, fnorm, Cgpi, Cnorm, fmin,

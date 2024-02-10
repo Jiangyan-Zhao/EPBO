@@ -64,6 +64,9 @@
 #'  
 #' @author Jiangyan Zhao \email{zhaojy2017@126.com}
 #' 
+#' @references Jiangyan Zhao and Jin Xu (07 Feb 2024): Bayesian Optimization via Exact Penalty, 
+#' \emph{Technometrics}, DOI: 10.1080/00401706.2024.2315937
+#' 
 #' @keywords optimize
 #' @keywords design
 #' 

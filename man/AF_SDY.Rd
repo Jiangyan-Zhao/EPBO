@@ -30,9 +30,14 @@ The Predictive Standard Deviation at \code{x}.
 \description{
 The predictive standard deviation acquisition function of the PEPBO method
 }
+\references{
+Jiangyan Zhao and Jin Xu (07 Feb 2024): Bayesian Optimization via Exact Penalty,
+\emph{Technometrics}, DOI: 10.1080/00401706.2024.2315937
+}
 \seealso{
 \code{\link[EPBO]{AF_ScaledEI}}, \code{\link[EPBO]{AF_OOSS}}, \code{\link[EPBO]{AF_AE}}
 }
 \author{
 Jiangyan Zhao \email{zhaojy2017@126.com}
 }
+\keyword{acquistionFunction}

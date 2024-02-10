@@ -19,6 +19,8 @@
 #' 
 #' @author Jiangyan Zhao \email{zhaojy2017@126.com}
 #' 
+#' @keywords acquistionFunction
+#' 
 #' @import laGP
 #' @importFrom stats dnorm 
 #' @importFrom stats pnorm 

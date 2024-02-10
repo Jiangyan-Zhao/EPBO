@@ -326,34 +326,61 @@ optim.PEP = function(
                       fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, 
                       rho=rho, equal=equal,
                       generations=100, popsize=100*dim,
-                      cprob=0.8, cdist=20,
-                      mprob=1/dim, mdist=20,
+                      cprob=0.9, cdist=20,
+                      mprob=0.1, mdist=20,
                       lower.bounds=rep(0, dim),
                       upper.bounds=rep(1, dim))
     AF_PF = AF_Pareto$value # Pareto front (-logSDY, EY)
     AF_PS = AF_Pareto$par   # Pareto set
     
+    
+    ## pure exploitation (minimize the predictive mean)
+    min_EY_idx = which.min(AF_PF[,2])
+    out_EY = optim( # enhance the EY approach
+      par=AF_PS[min_EY_idx, ], fn=AF_EY, method="L-BFGS-B",
+      lower=0, upper=1,
+      fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
+      rho=rho, equal=equal)
+    
+    # calculate next point
+    # xnext_unit = AF_PS[min_EY_idx, ]
+    xnext_unit = matrix(out_EY$par, nrow = 1)
+    X_unit = rbind(X_unit, xnext_unit)
+    xnext = unnormalize(xnext_unit, B)
+    X = rbind(X, xnext)
+    
+    PF_selected = matrix(NA, nrow = nprl, ncol = 2)
+    PF_selected[1,] = AF_PF[min_EY_idx, ]
+    
+    # AF_PF = AF_PF[-min_EY_idx,] 
+    # AF_PS = AF_PS[-min_EY_idx,] 
+    
     ## Perform k-means clustering on the AF's Pareto front
-    AF_cl = kmeans(x = AF_PF, centers = nprl, nstart = 25)
+    AF_cl = kmeans(x = AF_PF, centers = nprl-1, nstart = 25)
     
     # kappa = 1 + pnorm(6 * (k - start) / (end - start) - 3)
+    # kappa = 0.2 * dim * log(2*k) # https://github.com/kirthevasank/add-gp-bandits/blob/master/BOLibkky/getUCBUtility.m
     # if(verb > 0) { cat("  kappa=", kappa, " ", sep="", "\n")}
     
-    cl_PF_selected = matrix(NA, nrow = nprl, ncol = 2)
-    for (cl in 1:nprl) {
+    for (cl in 1:(nprl-1)) {
       ## a single member with highest EIC is selected from each cluster
       cl_idx = which(AF_cl$cluster == cl)
       cl_PS = matrix(AF_PS[cl_idx, ], nrow = length(cl_idx))
       cl_PF = matrix(AF_PF[cl_idx, ], nrow = length(cl_idx))
       
-      ## LCB criterion
-      cl_LCB = cl_PF[,2] - kappa * exp(-cl_PF[,1])
-      min_LCB_idx = which.min(cl_LCB)
+      # ## LCB criterion
+      # cl_LCB = cl_PF[,2] - sqrt(kappa) * exp(-cl_PF[,1])
+      # min_LCB_idx = which.min(cl_LCB)
+      # PF_selected[cl+1,] = cl_PF[min_LCB_idx,]
       
-      cl_PF_selected[cl,] = cl_PF[min_LCB_idx,]
+      cl_center = AF_cl$centers[cl,]
+      dist = apply(cl_PF, 1, \(x){norm(x- cl_center, type="2")}) # Euclidean distance
+      min_dist_idx = which.min(dist)  # Find index of minimum distance
+      PF_selected[cl+1,] = cl_PF[min_dist_idx,]
       
       # calculate next point
-      xnext_unit = cl_PS[min_LCB_idx, ]
+      # xnext_unit = cl_PS[min_LCB_idx, ]
+      xnext_unit = cl_PS[min_dist_idx, ]
       X_unit = rbind(X_unit, xnext_unit)
       xnext = unnormalize(xnext_unit, B)
       X = rbind(X, xnext)
@@ -434,16 +461,16 @@ optim.PEP = function(
       
       # Pareto Front
       plot(AF_PF, 
-           pch = 4, col = AF_cl$cluster,
+           pch = 4, col = AF_cl$cluster+1,
            lwd = 1.5, cex = 0.6,
            xlab="-logSDY", ylab="EY", main="Objective space")
-      points(cl_PF_selected, 
+      points(PF_selected, 
              col = 1:nprl, pch = 18, cex = 2)
       
       # Pareto Set
       plot(unnormalize(AF_PS[,1:2], B), 
            xlim = B[1,], ylim = B[2,], 
-           pch = 4, col = AF_cl$cluster,
+           pch = 4, col = AF_cl$cluster+1,
            lwd = 1.5, cex = 0.6,
            xlab = "x1", ylab = "x2", main="Parameter space")
       points(tail(X[,1:2], nprl), 

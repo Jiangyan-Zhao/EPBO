@@ -35,6 +35,9 @@ The Scaled expected improvement acquisition function of the EPBO method
 \references{
 Noe, U. and D. Husmeier (2018). On a new improvement-based acquisition function
 for Bayesian optimization. \emph{arXiv:1808.06918}.
+
+Jiangyan Zhao and Jin Xu (07 Feb 2024): Bayesian Optimization via Exact Penalty,
+\emph{Technometrics}, DOI: 10.1080/00401706.2024.2315937
 }
 \seealso{
 \code{\link[EPBO]{AF_OOSS}}, \code{\link[EPBO]{AF_EY}}, \code{\link[EPBO]{AF_AE}}
@@ -42,3 +45,4 @@ for Bayesian optimization. \emph{arXiv:1808.06918}.
 \author{
 Jiangyan Zhao \email{zhaojy2017@126.com}
 }
+\keyword{acquistionFunction}

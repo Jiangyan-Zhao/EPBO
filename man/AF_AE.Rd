@@ -42,3 +42,4 @@ asymmetric entropy measure. \emph{Journal of Computational and Graphical Statist
 \author{
 Jiangyan Zhao \email{zhaojy2017@126.com}
 }
+\keyword{acquistionFunction}
