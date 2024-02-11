@@ -190,13 +190,14 @@ optim.PEIC = function(
     ## Maximize the PEIC AF via the PSO algorithm.
     m2_old = m2
     for (prl in 1:nprl) {
-      out_AF = psoptim(rep(NA,dim), fn = AF_PEIC,
-                       fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2_old,
-                       df=df, point_update=tail(X_unit, prl-1),
-                       lower = rep(0, dim), upper = rep(1, dim),
-                       control = list(maxit = 100,   # generations
-                                      s = 100,       # swarm size
-                                      fnscale = -1)) # for maximization
+      out_AF = psoptim(
+        rep(NA,dim), fn = AF_PEIC,
+        fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2_old,
+        df=df, point_update=tail(X_unit, prl-1),
+        lower = rep(0, dim), upper = rep(1, dim),
+        control = list(maxit = 100,   # generations
+                       s = 100,       # swarm size
+                       fnscale = -1)) # for maximization
       
       ## calculate next point
       xnext_unit = matrix(out_AF$par, nrow = 1)

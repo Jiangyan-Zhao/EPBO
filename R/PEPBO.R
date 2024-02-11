@@ -322,17 +322,22 @@ optim.PEP = function(
     }
     
     ## Approximate the Pareto front and Pareto set via the NSGA-II algorithm.
-    AF_Pareto = nsga2(fn=AF_EYvsSDY, idim=dim, odim=2,
-                      fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, 
-                      rho=rho, equal=equal,
-                      generations=100, popsize=100*dim,
-                      cprob=0.9, cdist=20,
-                      mprob=0.1, mdist=20,
-                      lower.bounds=rep(0, dim),
-                      upper.bounds=rep(1, dim))
+    AF_Pareto = nsga2(
+      fn=AF_EYvsSDY, idim=dim, odim=2,
+      fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi,
+      rho=rho, equal=equal,
+      generations=100, popsize=100*dim,
+      cprob=0.9, cdist=20, mprob=0.1, mdist=20,
+      lower.bounds=rep(0, dim), upper.bounds=rep(1, dim))
     AF_PF = AF_Pareto$value # Pareto front (-logSDY, EY)
     AF_PS = AF_Pareto$par   # Pareto set
     
+    ## Remove Pareto sets with probability of feasibility less than 0.5
+    if(is.finite(m2)){
+      PS_PoF_idx = which(AF_PoF(AF_PS, Cgpi) < 0.5)
+      AF_PF = AF_PF[-PS_PoF_idx,]
+      AF_PS = AF_PS[-PS_PoF_idx,]
+    }
     
     ## pure exploitation (minimize the predictive mean)
     min_EY_idx = which.min(AF_PF[,2])

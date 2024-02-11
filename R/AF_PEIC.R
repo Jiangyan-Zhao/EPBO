@@ -27,8 +27,7 @@
 #' @importFrom stats quantile
 
 
-AF_PEIC = function(x, fgpi, fmean, fsd, Cgpi, fmin, 
-                   df, point_update)
+AF_PEIC = function(x, fgpi, fmean, fsd, Cgpi, fmin, df, point_update)
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x)

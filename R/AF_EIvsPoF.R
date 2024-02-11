@@ -33,7 +33,7 @@ AF_EIvsPoF = function(x, fgpi, fmean, fsd, Cgpi, fmin)
   pred_f = predGPsep(fgpi, x, lite=TRUE)
   mu_f = pred_f$mean * fsd + fmean
   sigma_f = sqrt(pred_f$s2) * fsd
-  if(!is.finite(fmin)) fmin = quantile(mu_f, p=0.9) # adopt the recommendation of laGP package
+  if(!is.finite(fmin)) fmin = mu_f + 0.1 * abs(mu_f)
   d = (fmin - mu_f)/sigma_f
   EI = sigma_f*(d*pnorm(d) + dnorm(d))
   EI = max(EI, .Machine$double.eps)
