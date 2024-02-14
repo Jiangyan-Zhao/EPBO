@@ -13,6 +13,8 @@
 #' 
 #' @import laGP
 #' @importFrom stats pnorm 
+#' 
+#' @export
 
 
 AF_PoF = function(x, Cgpi)

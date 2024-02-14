@@ -24,6 +24,8 @@
 #' @import laGP
 #' @importFrom stats dnorm 
 #' @importFrom stats pnorm 
+#' 
+#' @export
 
 
 AF_EYvsSDY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)

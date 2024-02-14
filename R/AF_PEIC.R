@@ -25,6 +25,8 @@
 #' @importFrom stats dnorm 
 #' @importFrom stats pnorm 
 #' @importFrom stats quantile
+#' 
+#' @export
 
 
 AF_PEIC = function(x, fgpi, fmean, fsd, Cgpi, fmin, df, point_update)

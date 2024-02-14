@@ -22,6 +22,8 @@
 #' @importFrom stats dnorm 
 #' @importFrom stats pnorm 
 #' @importFrom stats quantile
+#' 
+#' @export
 
 
 AF_EIvsPoF = function(x, fgpi, fmean, fsd, Cgpi, fmin)

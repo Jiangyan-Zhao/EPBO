@@ -14,6 +14,8 @@
 #' if all elements of \code{X} are contained within \code{[0, 1]^d}, 
 #' 
 #' @author Jiangyan Zhao \email{zhaojy2017@126.com}
+#' 
+#' @export
 
 
 normalize = function(X, bounds)

@@ -19,6 +19,8 @@
 #' \emph{Journal of Computational and Graphical Statistics} 31(1), 74-83.
 #' 
 #' @import laGP
+#' 
+#' @export
 
 
 AF_OOSS = function(x, fgpi, fnorm, Cgpi, Cnorm)

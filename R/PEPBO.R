@@ -332,11 +332,11 @@ optim.PEP = function(
     AF_PF = AF_Pareto$value # Pareto front (-logSDY, EY)
     AF_PS = AF_Pareto$par   # Pareto set
     
-    ## Remove Pareto sets with probability of feasibility less than 0.5
-    if(is.finite(m2)){
-      PS_PoF_idx = which(AF_PoF(AF_PS, Cgpi) < 0.5)
-      AF_PF = AF_PF[-PS_PoF_idx,]
-      AF_PS = AF_PS[-PS_PoF_idx,]
+    ## Remove Pareto sets with probability of feasibility less than 0.2
+    PS_PoF_idx = which(AF_PoF(AF_PS, Cgpi) > 0.2)
+    if(length(PS_PoF_idx) > 0.2 * nrow(AF_PS)){
+      AF_PF = AF_PF[PS_PoF_idx,]
+      AF_PS = AF_PS[PS_PoF_idx,]
     }
     
     ## pure exploitation (minimize the predictive mean)
@@ -378,14 +378,21 @@ optim.PEP = function(
       # min_LCB_idx = which.min(cl_LCB)
       # PF_selected[cl+1,] = cl_PF[min_LCB_idx,]
       
+      ## center of the Pareto front
       cl_center = AF_cl$centers[cl,]
       dist = apply(cl_PF, 1, \(x){norm(x- cl_center, type="2")}) # Euclidean distance
       min_dist_idx = which.min(dist)  # Find index of minimum distance
       PF_selected[cl+1,] = cl_PF[min_dist_idx,]
       
+      # ## max std criterion
+      # max_STD_idx = which.max(-cl_PF[,1])
+      # PF_selected[cl+1,] = cl_PF[max_STD_idx,]
+      
+      
       # calculate next point
       # xnext_unit = cl_PS[min_LCB_idx, ]
       xnext_unit = cl_PS[min_dist_idx, ]
+      # xnext_unit = cl_PS[max_STD_idx, ]
       X_unit = rbind(X_unit, xnext_unit)
       xnext = unnormalize(xnext_unit, B)
       X = rbind(X, xnext)

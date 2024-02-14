@@ -31,6 +31,8 @@
 #' @import laGP
 #' @importFrom stats dnorm 
 #' @importFrom stats pnorm 
+#' 
+#' @export
 
 AF_ScaledEI = function(x, fgpi, fmean, fsd, Cgpi, epbest, rho, equal)
 {

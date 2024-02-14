@@ -36,3 +36,4 @@ The predictive standard deviation acquisition function of the PEPBO method
 \author{
 Jiangyan Zhao \email{zhaojy2017@126.com}
 }
+\keyword{acquistionFunction}
