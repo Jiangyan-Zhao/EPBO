@@ -18,4 +18,13 @@ If you have used our code for research purposes, please cite the publication men
   year = {2024}, 
   doi = {10.1080/00401706.2024.2315937}, 
 }
+
+@software{Zhao_EPBO_Bayesian_Optimization_2023,
+  author = {Zhao, Jiangyan},
+  month = dec,
+  title = {{EPBO: Bayesian Optimization via Exact Penalty}},
+  url = {https://github.com/Jiangyan-Zhao/EPBO},
+  version = {0.1.0},
+  year = {2023}
+}
 ```

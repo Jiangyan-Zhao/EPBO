@@ -3,6 +3,8 @@ message: "If you use this software, please cite it as below."
 authors:
 - family-names: "Zhao"
   given-names: "Jiangyan"
+- family-names: "Xu"
+  given-names: "Jin"
 title: "EPBO: Bayesian Optimization via Exact Penalty"
 version: 0.1.0
 date-released: 2023-12-27

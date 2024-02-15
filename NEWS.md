@@ -1,3 +1,10 @@
+## EPBO 0.1.5
+
+* Scale the Pareto front between 0 and 1, i.e., min-max scaling
+
+## EPBO 0.1.4
+
+* Remove Pareto sets with probability of feasibility less than 0.5
 
 ## EPBO 0.1.3
 

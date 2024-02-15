@@ -60,7 +60,8 @@ AF_SDY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
   
   ## the predictive standard deviation of the exact penalty surrogate
   SDY = sqrt(pred_f$s2 + rho^2 %*% VV)
-  SDY = pmax(.Machine$double.xmin, SDY)
+  # return(SDY)
   
+  SDY = pmax(.Machine$double.xmin, SDY)
   return(log(SDY)) # log scale
 }
