@@ -8,7 +8,6 @@ optim.PEP(
   blackbox,
   B,
   nprl = 3,
-  kappa = 1,
   equal = FALSE,
   ethresh = 0.01,
   Xstart = NULL,
@@ -34,8 +33,6 @@ of the \code{matrix} determines the input dimension (\code{length(x)} in \code{b
 the first column gives lower bounds and the second gives upper bounds}
 
 \item{nprl}{positive integer giving the number of the parallel points per iteration}
-
-\item{kappa}{positive weighted parameter in the LCB acquistion function}
 
 \item{equal}{an optional vector containing zeros and ones, whose length equals the number of
 constraints, specifying which should be treated as equality constraints (\code{1}) and

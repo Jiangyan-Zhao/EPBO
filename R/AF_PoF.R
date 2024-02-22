@@ -4,6 +4,11 @@
 #' 
 #' @param x a vector containing a single candidate point
 #' @param Cgpi the GP surrogate models of the constraints
+#' @param equal an optional vector containing zeros and ones, whose length equals the number of
+#' constraints, specifying which should be treated as equality constraints (\code{1}) and 
+#' which as inequality (\code{0}) 
+#' @param CVthresh a threshold used for equality constraints to determine validity for 
+#' progress measures; ignored if there are no equality constraints
 #' 
 #' @returns The PoF value(s) at \code{x}. 
 #' 
@@ -17,7 +22,7 @@
 #' @export
 
 
-AF_PoF = function(x, Cgpi)
+AF_PoF = function(x, Cgpi, equal, CVthresh=0)
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x)
@@ -29,7 +34,14 @@ AF_PoF = function(x, Cgpi)
     pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
     mu_C = pred_C$mean
     sigma_C = sqrt(pred_C$s2)
-    PoF = PoF * pnorm(0, mu_C, sigma_C)
+    # if(equal[j]){
+    #   PoF = PoF * (pnorm(ethresh, mu_C, sigma_C) - pnorm(-ethresh, mu_C, sigma_C))
+    # }else{
+    #   PoF = PoF * pnorm(ethresh, mu_C, sigma_C)
+    # }
+    if(!equal[j]){
+      PoF = PoF * pnorm(CVthresh, mu_C, sigma_C)
+    }
   }
   
   return(PoF)

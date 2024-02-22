@@ -9,3 +9,4 @@ title: "EPBO: Bayesian Optimization via Exact Penalty"
 version: 0.1.0
 date-released: 2023-12-27
 url: "https://github.com/Jiangyan-Zhao/EPBO"
+license: AGPL-3.0

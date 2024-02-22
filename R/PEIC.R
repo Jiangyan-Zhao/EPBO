@@ -137,23 +137,17 @@ optim.PEIC = function(
   fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
   fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
   df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
-  deleteGPsep(fgpi)
   df[df<dlim[1]] = 10*dlim[1]
   df[df>dlim[2]] = dlim[2]/10
-  fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
-  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
   
   ## initializing constraint surrogates
   Cgpi = rep(NA, nc)
   dc = matrix(NA, nrow=nc, ncol=dim)
   for (j in 1:nc) {
-    Cgpi[j] = newGPsep(X_unit, C[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
+    Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
     dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-    deleteGPsep(Cgpi[j])
     dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
     dc[j, dc[j,]>dlim[2]] = dlim[2]/10
-    Cgpi[j] = newGPsep(X_unit, C[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
-    dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
   }
   
   ## printing initial design
@@ -170,19 +164,19 @@ optim.PEIC = function(
     if(k > start && (ceiling((k-start)/nprl) %% urate == 0)) {
       ## objective surrogate
       deleteGPsep(fgpi)
-      df[df<dlim[1]] = 10*dlim[1]
-      df[df>dlim[2]] = dlim[2]/10
       fmean = mean(obj); fsd = sd(obj)
       fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
       df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+      df[df<dlim[1]] = 10*dlim[1]
+      df[df>dlim[2]] = dlim[2]/10
       
       ## constraint surrogates 
       for(j in 1:nc) {
         deleteGPsep(Cgpi[j])
-        dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-        dc[j, dc[j,]>dlim[2]] = dlim[2]/10
         Cgpi[j] = newGPsep(X_unit, C[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
         dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+        dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
+        dc[j, dc[j,]>dlim[2]] = dlim[2]/10
       }
     }
     
@@ -252,18 +246,24 @@ optim.PEIC = function(
       }
       # the updating points per iteration in parallel
       plot(tail(X[,1:2], nprl), 
-           xlim = B[1,], ylim = B[2,], pch = 18,
+           xlim = c(B[1,1], B[1,2]+0.1*abs(B[1,2])), ylim = B[2,], 
+           pch = 18, col="red",
            xlab = "x1", ylab = "x2", main="updating points")
       text(tail(X[,1:2], nprl), labels = seq_len(nprl), pos=4)
+      points(X[1:k,1:2], pch = 16, cex = 0.6)
       par(mfrow=c(1,1))
     }
     
     ## update GP fits
     updateGPsep(fgpi, tail(X_unit, nprl), (tail(obj,nprl)-fmean)/fsd, verb = 0)
     df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
+    df[df<dlim[1]] = 10*dlim[1]
+    df[df>dlim[2]] = dlim[2]/10
     for(j in 1:nc){
       updateGPsep(Cgpi[j], tail(X_unit, nprl), tail(C[,j],nprl), verb = 0)
       dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
+      dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
+      dc[j, dc[j,]>dlim[2]] = dlim[2]/10
     }
   }
   

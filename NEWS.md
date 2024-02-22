@@ -1,3 +1,7 @@
+## EPBO 0.1.6
+
+* Add pure exploration strategy
+
 ## EPBO 0.1.5
 
 * Scale the Pareto front between 0 and 1, i.e., min-max scaling

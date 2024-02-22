@@ -53,6 +53,6 @@ AF_EY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
   
   ## the predictive mean of the exact penalty surrogate
   EY = mu_f + rho%*%EV
-  
+
   return(EY)
 }

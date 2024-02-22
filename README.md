@@ -1,8 +1,6 @@
 # EPBO: Bayesian Optimization via Exact Penalty
 
-An R package that implements a series of constrained Bayesian optimization algorithms.
-
-under development
+An R package that implements a series of constrained Bayesian optimization algorithms. (**under development**)
 
 Implementation of the EPBO method proposed in
 
@@ -20,7 +18,7 @@ If you have used our code for research purposes, please cite the publication men
 }
 
 @software{Zhao_EPBO_Bayesian_Optimization_2023,
-  author = {Zhao, Jiangyan},
+  author = {Zhao, Jiangyan and Xu, Jin},
   month = dec,
   title = {{EPBO: Bayesian Optimization via Exact Penalty}},
   url = {https://github.com/Jiangyan-Zhao/EPBO},

@@ -138,23 +138,17 @@ optim.EIvsPoF = function(
   fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
   fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
   df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
-  deleteGPsep(fgpi)
   df[df<dlim[1]] = 10*dlim[1]
   df[df>dlim[2]] = dlim[2]/10
-  fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
-  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
   
   ## initializing constraint surrogates
   Cgpi = rep(NA, nc)
   dc = matrix(NA, nrow=nc, ncol=dim)
   for (j in 1:nc) {
-    Cgpi[j] = newGPsep(X_unit, C[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
+    Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
     dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-    deleteGPsep(Cgpi[j])
     dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
     dc[j, dc[j,]>dlim[2]] = dlim[2]/10
-    Cgpi[j] = newGPsep(X_unit, C[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
-    dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
   }
   
   ## printing initial design
@@ -171,19 +165,19 @@ optim.EIvsPoF = function(
     if(k > start && (ceiling((k-start)/nprl) %% urate == 0)) {
       ## objective surrogate
       deleteGPsep(fgpi)
-      df[df<dlim[1]] = 10*dlim[1]
-      df[df>dlim[2]] = dlim[2]/10
       fmean = mean(obj); fsd = sd(obj)
       fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
       df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+      df[df<dlim[1]] = 10*dlim[1]
+      df[df>dlim[2]] = dlim[2]/10
       
       ## constraint surrogates 
       for(j in 1:nc) {
         deleteGPsep(Cgpi[j])
-        dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-        dc[j, dc[j,]>dlim[2]] = dlim[2]/10
         Cgpi[j] = newGPsep(X_unit, C[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
         dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+        dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
+        dc[j, dc[j,]>dlim[2]] = dlim[2]/10
       }
     }
     
@@ -193,10 +187,11 @@ optim.EIvsPoF = function(
       fn=AF_EIvsPoF, idim=dim, odim=2,
       fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2,
       generations=100, popsize=100*nprl,
-      cprob=0.9, cdist=20, mprob=0.1, mdist=20,
+      # cprob=0.9, cdist=20, mprob=0.1, mdist=20,
       lower.bounds=rep(0, dim), upper.bounds=rep(1, dim))
     AF_PF = AF_Pareto$value # Pareto front
     AF_PS = AF_Pareto$par   # Pareto set
+    PF_selected = matrix(NA, nrow = nprl, ncol = 2)
     
     
     ## Perform k-means clustering on the AF's Pareto front
@@ -213,6 +208,7 @@ optim.EIvsPoF = function(
       # cl_EIC = rowSums(-cl_PF)
       cl_EIC = exp(-cl_PF[,1]) * (-cl_PF[,2])
       max_EIC_idx = which.max(cl_EIC)
+      PF_selected[cl,] = cl_PF[max_EIC_idx,]
       
       ## calculate next point
       xnext_unit = cl_PS[max_EIC_idx, ]
@@ -252,28 +248,60 @@ optim.EIvsPoF = function(
       }
     }
     
-    ## plot Pareto Front and Pareto set
-    if (plotPareto) {
-      par(ps=16, mfrow=c(1,2))
+    ## plot progress, Pareto Front, and Pareto set
+    if(plotPareto) {
+      par(ps=16, mfrow=c(2,2))
+      ## progress
+      if(is.finite(m2)){
+        plot(prog, type="l", lwd=1.6, 
+             xlab="n", ylab="BFOV", main="progress")
+      }else{
+        plot(prog, type="l", ylim=range(obj), lwd=1.6, 
+             xlab="n", ylab="BFOV", main="progress")
+      }
+      
+      ## legend
+      plot.new()
+      legend("center", bty="n",
+             # title="legend in parameter space",
+             legend=c(
+               "Pareto set",
+               "previous points", 
+               paste0("selected updated (q=", nprl, ")")),
+             pch=c(4,16,18), 
+             pt.cex = c(1,1.2,1.5), pt.lwd = c(2,1,1))
+      
       # Pareto Front
-      plot(AF_PF, ylim = c(-1, 0), 
-           pch = 1 + AF_cl$cluster, col = 1 + AF_cl$cluster,
+      plot(AF_PF, ylim=c(-1,0),
+           pch = 4, col = AF_cl$cluster,
+           lwd = 1.5, cex = 0.6,
            xlab="-logEI", ylab="-PoF", main="Objective space")
+      points(PF_selected, 
+             col = 1:nprl, pch = 18, cex = 2)
+      
       # Pareto Set
       plot(unnormalize(AF_PS[,1:2], B), 
-           xlim = B[1,], ylim = B[2,], cex = 0.6,
+           xlim = B[1,], ylim = B[2,], 
+           pch = 4, col = AF_cl$cluster,
+           lwd = 1.5, cex = 0.6,
            xlab = "x1", ylab = "x2", main="Parameter space")
       points(tail(X[,1:2], nprl), 
-             col = 1 + (1:nprl), pch = 18, cex = 1.6)
+             col = 1:nprl, pch = 18, cex = 2)
+      points(X[1:k,1:2], pch = 16, cex = 0.6)
       par(mfrow=c(1,1))
     }
     
     ## update GP fits
     updateGPsep(fgpi, tail(X_unit, nprl), (tail(obj,nprl)-fmean)/fsd, verb = 0)
     df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
+    df[df<dlim[1]] = 10*dlim[1]
+    df[df>dlim[2]] = dlim[2]/10
+    
     for(j in 1:nc){
       updateGPsep(Cgpi[j], tail(X_unit, nprl), tail(C[,j],nprl), verb = 0)
       dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
+      dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
+      dc[j, dc[j,]>dlim[2]] = dlim[2]/10
     }
   }
   

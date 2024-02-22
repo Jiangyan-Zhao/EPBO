@@ -4,12 +4,19 @@
 \alias{AF_PoF}
 \title{PoF}
 \usage{
-AF_PoF(x, Cgpi)
+AF_PoF(x, Cgpi, equal, CVthresh = 0.1)
 }
 \arguments{
 \item{x}{a vector containing a single candidate point}
 
 \item{Cgpi}{the GP surrogate models of the constraints}
+
+\item{equal}{an optional vector containing zeros and ones, whose length equals the number of
+constraints, specifying which should be treated as equality constraints (\code{1}) and
+which as inequality (\code{0})}
+
+\item{CVthresh}{a threshold used for equality constraints to determine validity for
+progress measures; ignored if there are no equality constraints}
 }
 \value{
 The PoF value(s) at \code{x}.

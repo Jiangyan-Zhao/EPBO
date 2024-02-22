@@ -256,11 +256,13 @@ optim.PEP = function(
   fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
   fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
   df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
-  deleteGPsep(fgpi)
   df[df<dlim[1]] = 10*dlim[1]
   df[df>dlim[2]] = dlim[2]/10
+  deleteGPsep(fgpi)
   fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
   df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+  df[df<dlim[1]] = 10*dlim[1]
+  df[df>dlim[2]] = dlim[2]/10
   
   ## initializing constraint surrogates
   Cgpi = rep(NA, nc)
@@ -268,11 +270,13 @@ optim.PEP = function(
   for (j in 1:nc) {
     Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
     dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-    deleteGPsep(Cgpi[j])
     dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
     dc[j, dc[j,]>dlim[2]] = dlim[2]/10
-    Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
+    deleteGPsep(Cgpi[j])
+    Cgpi[j] = newGPsep(X_unit, C[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
     dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+    dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
+    dc[j, dc[j,]>dlim[2]] = dlim[2]/10
   }
   
   ## printing initial design
@@ -292,19 +296,19 @@ optim.PEP = function(
     if(k > start && (ceiling((k-start)/nprl) %% urate == 0)) {
       ## objective surrogate
       deleteGPsep(fgpi)
-      df[df<dlim[1]] = 10*dlim[1]
-      df[df>dlim[2]] = dlim[2]/10
       fmean = mean(obj); fsd = sd(obj)
       fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
       df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+      df[df<dlim[1]] = 10*dlim[1]
+      df[df>dlim[2]] = dlim[2]/10
       
       ## constraint surrogates 
       for(j in 1:nc) {
         deleteGPsep(Cgpi[j])
-        dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-        dc[j, dc[j,]>dlim[2]] = dlim[2]/10
         Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
         dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
+        dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
+        dc[j, dc[j,]>dlim[2]] = dlim[2]/10
       }
     }
     
@@ -313,7 +317,7 @@ optim.PEP = function(
     ck = C[which.min(ep),]
     invalid = rep(NA, nc)
     invalid[!equal] = (ck[!equal] > 0); invalid[equal] = (abs(ck[equal]) > ethresh)
-    if(is.finite(m2) && any(invalid)){
+    if(is.finite(m2) && any(invalid) && since > 2*nprl){
       rho[invalid] = rho[invalid] * 2
       scv = CV%*%rho; ep = obj + scv; epbest = min(ep)
       if(verb > 0) cat(" the smallest EP is not feasible, updating rho=(", 
@@ -324,16 +328,18 @@ optim.PEP = function(
     AF_Pareto = nsga2(
       fn=AF_EYvsSDY, idim=dim, odim=2,
       fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi,
-      rho=rho, equal=equal,
+      rho=rho, equal=equal, 
       generations=100, popsize=100*nprl,
-      cprob=0.9, cdist=20, mprob=0.1, mdist=20,
+      # cprob=0.9, cdist=20, mprob=0.1, mdist=20,
       lower.bounds=rep(0, dim), upper.bounds=rep(1, dim))
     AF_PF = AF_Pareto$value # Pareto front (-logSDY, EY)
     AF_PS = AF_Pareto$par   # Pareto set
     PF_selected = matrix(NA, nrow = nprl, ncol = 2)
     
-    ## Remove Pareto sets with probability of feasibility less than 0.5
-    PS_PoF_idx = which(AF_PoF(AF_PS, Cgpi) > 0.5)
+    ## Remove Pareto sets with probability of feasibility less than 0.9
+    # CVthresh = pmax(apply(CV, 2, max) * 0.1, 0.1)
+    CVthresh = 0.1
+    PS_PoF_idx = which(AF_PoF(AF_PS, Cgpi, equal, CVthresh) > 0.05)
     if(length(PS_PoF_idx) > 0.2 * nrow(AF_PS)){
       AF_PF = AF_PF[PS_PoF_idx,]
       AF_PS = AF_PS[PS_PoF_idx,]
@@ -347,44 +353,62 @@ optim.PEP = function(
       lower=0, upper=1,
       fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
       rho=rho, equal=equal)
+
+    # calculate next point
+    xnext_unit = matrix(out_EY$par, nrow = 1)
+    X_unit = rbind(X_unit, xnext_unit)
+    xnext = unnormalize(xnext_unit, B)
+    X = rbind(X, xnext)
+    
+    ## pure exploration (maximize the predictive standard deviation)
+    max_SDY_idx = which.max(-AF_PF[,1])
+    PF_selected[2,] = AF_PF[max_SDY_idx, ]
+    out_SDY = optim( # enhance the SDY approach
+      par=AF_PS[max_SDY_idx, ], fn=AF_SDY, method="L-BFGS-B",
+      lower=0, upper=1,
+      control = list(fnscale = -1), # maximization problem
+      fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
+      rho=rho, equal=equal)
     
     # calculate next point
-    # xnext_unit = AF_PS[min_EY_idx, ]
-    xnext_unit = matrix(out_EY$par, nrow = 1)
+    xnext_unit = matrix(out_SDY$par, nrow = 1)
     X_unit = rbind(X_unit, xnext_unit)
     xnext = unnormalize(xnext_unit, B)
     X = rbind(X, xnext)
     
     ## Perform k-means clustering on the AF's Pareto front
     AF_PF_Scaled = min_max_scale(AF_PF)
-    AF_cl = kmeans(x = AF_PF_Scaled, centers = nprl-1, 
+    AF_cl = kmeans(x = AF_PF_Scaled, centers = nprl-2, 
                    iter.max = 100, nstart = 5*nprl)
 
-    for (cl in 1:(nprl-1)) {
+    for (cl in 1:(nprl-2)) {
       ## a single member with highest EIC is selected from each cluster
       cl_idx = which(AF_cl$cluster == cl)
       cl_PS = AF_PS[cl_idx, , drop=FALSE]
       cl_PF = AF_PF[cl_idx, , drop=FALSE]
       
-      
-      # ## center of the Pareto front
-      # cl_center = AF_cl$centers[cl,]
-      # dist = apply(AF_PF_Scaled[cl_idx, , drop=FALSE], 1, 
-      #              function(x){norm(x- cl_center, type="2")}) # Euclidean distance
-      # min_dist_idx = which.min(dist)  # Find index of minimum distance
-      # PF_selected[cl+1,] = cl_PF[min_dist_idx,]
-      
-      ## max std criterion
-      max_STD_idx = which.max(-cl_PF[,1])
-      PF_selected[cl+1,] = cl_PF[max_STD_idx,]
-      
-      
-      # calculate next point
-      # xnext_unit = cl_PS[min_dist_idx, ]
-      xnext_unit = cl_PS[max_STD_idx, ]
+      ## center of the Pareto front
+      cl_center = AF_cl$centers[cl,]
+      dist = apply(AF_PF_Scaled[cl_idx, , drop=FALSE], 1,
+                   function(x){norm(x- cl_center, type="2")}) # Euclidean distance
+      min_dist_idx = which.min(dist)  # Find index of minimum distance
+      PF_selected[cl+2,] = cl_PF[min_dist_idx,]
+
+      ## calculate next point
+      xnext_unit = cl_PS[min_dist_idx, ]
       X_unit = rbind(X_unit, xnext_unit)
       xnext = unnormalize(xnext_unit, B)
       X = rbind(X, xnext)
+      
+      # ## max std criterion
+      # max_STD_idx = which.max(-cl_PF[,1])
+      # PF_selected[cl+2,] = cl_PF[max_STD_idx,]
+      # 
+      # ## calculate next point
+      # xnext_unit = cl_PS[max_STD_idx, ]
+      # X_unit = rbind(X_unit, xnext_unit)
+      # xnext = unnormalize(xnext_unit, B)
+      # X = rbind(X, xnext)
     }
     
     ## new runs
@@ -435,7 +459,7 @@ optim.PEP = function(
     if(verb > 0 && any(rho_new > rho)){ # printing progress
       cat("  updating rho=[", paste(signif(pmax(rho_new, rho),3), collapse=", "), "]\n", sep="")
     }
-    rho = pmax(rho_new, rho)
+    rho = pmax(rho_new, rho) 
     
     ## plot progress, Pareto Front, and Pareto set
     if(plotPareto) {
@@ -462,7 +486,7 @@ optim.PEP = function(
       
       # Pareto Front
       plot(AF_PF, 
-           pch = 4, col = AF_cl$cluster+1,
+           pch = 4, col = AF_cl$cluster+2,
            lwd = 1.5, cex = 0.6,
            xlab="-logSDY", ylab="EY", main="Objective space")
       points(PF_selected, 
@@ -471,7 +495,7 @@ optim.PEP = function(
       # Pareto Set
       plot(unnormalize(AF_PS[,1:2], B), 
            xlim = B[1,], ylim = B[2,], 
-           pch = 4, col = AF_cl$cluster+1,
+           pch = 4, col = AF_cl$cluster+2,
            lwd = 1.5, cex = 0.6,
            xlab = "x1", ylab = "x2", main="Parameter space")
       points(tail(X[,1:2], nprl), 
@@ -483,23 +507,31 @@ optim.PEP = function(
     ## update GP fits
     updateGPsep(fgpi, tail(X_unit, nprl), (tail(obj,nprl)-fmean)/fsd, verb = 0)
     df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
+    df[df<dlim[1]] = 10*dlim[1]
+    df[df>dlim[2]] = dlim[2]/10
     sigma_f = sqrt(predGPsep(fgpi, X_unit, lite=TRUE)$s2) #* fsd
     if(median(sigma_f) > 0.1){# rebuild GP as sigma is large at observed points
       if(verb > 0) cat(" rebuild objective surrogate as sigma is large at observed points \n")
       deleteGPsep(fgpi)
       fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dlim[1], g = dg_start[2], dK=TRUE)
       df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
+      df[df<dlim[1]] = 10*dlim[1]
+      df[df>dlim[2]] = dlim[2]/10
     }
     
     for(j in 1:nc) {
       updateGPsep(Cgpi[j], tail(X_unit, nprl), tail(C_bilog[,j],nprl), verb = 0)
       dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
+      dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
+      dc[j, dc[j,]>dlim[2]] = dlim[2]/10
       sigma_c = sqrt(predGPsep(Cgpi[j], X_unit, lite=TRUE)$s2)
       if(median(sigma_c) > 0.1){ # rebuild GP as sigma is large at observed points
         if(verb > 0) cat(" rebuild constrained", j, "surrogate as sigma is large at observed points \n")
         deleteGPsep(Cgpi[j])
         Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d = dlim[1], g = dg_start[2], dK=TRUE)
         dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
+        dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
+        dc[j, dc[j,]>dlim[2]] = dlim[2]/10
       }
     }
   }
