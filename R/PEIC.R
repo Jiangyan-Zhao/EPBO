@@ -144,7 +144,7 @@ optim.PEIC = function(
   Cgpi = rep(NA, nc)
   dc = matrix(NA, nrow=nc, ncol=dim)
   for (j in 1:nc) {
-    Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
+    Cgpi[j] = newGPsep(X_unit, C[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
     dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
     dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
     dc[j, dc[j,]>dlim[2]] = dlim[2]/10
@@ -153,8 +153,8 @@ optim.PEIC = function(
   ## printing initial design
   if(verb > 0) {
     cat("The initial design: ")
-    cat("ab=[", paste(signif(ab,3), collapse=", "), sep="")
-    cat("]; xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
+    cat("ab=[", paste(signif(ab,4), collapse=", "), sep="")
+    cat("]; xbest=[", paste(signif(xbest,4), collapse=" "), sep="")
     cat("]; ybest (prog=", m2, ", since=", since, ")\n", sep="")
   }
   
@@ -223,11 +223,11 @@ optim.PEIC = function(
       ## progress meter
       if(verb > 0) {
         cat("k=", k+prl, " ", sep="")
-        cat("PEIC=", paste(signif(out_AF$value,3), collapse=" "))
-        cat("; xnext ([", paste(signif(xnext,3), collapse=" "), 
+        cat("PEIC=", paste(signif(out_AF$value,4), collapse=" "))
+        cat("; xnext ([", paste(signif(xnext,4), collapse=" "), 
             "], feasibility=", feasibility[k], ")\n", sep="")
-        cat(" xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
-        cat("]; ybest (prog=", paste(signif(m2,3), collapse=" ")) 
+        cat(" xbest=[", paste(signif(xbest,4), collapse=" "), sep="")
+        cat("]; ybest (prog=", paste(signif(m2,4), collapse=" ")) 
         cat(", since=", since, ")\n", sep="")
       }
     }
@@ -271,5 +271,5 @@ optim.PEIC = function(
   deleteGPsep(fgpi)
   for(j in 1:nc) deleteGPsep(Cgpi[j])
   
-  return(list(prog = prog, xbest = xbest, obj = obj, C=C, X = X))
+  return(list(prog = prog, xbest = xbest, obj = obj, C=unbilog(C), X = X))
 }

@@ -4,7 +4,7 @@
 \alias{AF_PoF}
 \title{PoF}
 \usage{
-AF_PoF(x, Cgpi, equal, CVthresh = 0.1)
+AF_PoF(x, Cgpi, equal, CVthresh = 0)
 }
 \arguments{
 \item{x}{a vector containing a single candidate point}

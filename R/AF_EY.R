@@ -37,14 +37,14 @@ AF_EY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
   ncand = nrow(x) # number of the candidate points
 
   ## objective
-  pred_f = predGPsep(fgpi, x, lite=TRUE)
+  pred_f = predGPsep(fgpi, x, lite=TRUE, nonug = TRUE)
   mu_f = pred_f$mean * fsd + fmean
   
   ## constraints
   nc = length(Cgpi) # number of the constraint
   EV = matrix(NA, nc, ncand)
   for (j in 1:nc) {
-    pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
+    pred_C = predGPsep(Cgpi[j], x, lite=TRUE, nonug = TRUE)
     mu_C = pred_C$mean
     sigma_C = sqrt(pred_C$s2)
     dC = mu_C/sigma_C

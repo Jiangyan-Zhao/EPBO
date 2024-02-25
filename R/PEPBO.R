@@ -230,7 +230,8 @@ optim.PEP = function(
       rho = rep(0, nc)
     }else {
       ECV = colMeans(CV) # averaged CV
-      rho = mean(abs(obj)) * ECV/sum(ECV^2)
+      rho = mean(abs(obj)) * ECV/sum(ECV)^2
+      rho = pmin(rho, 100) # Prevent excessive penalty parameters
     }
     if(any(equal)) rho[equal] = pmax(1/ethresh/sum(equal), rho[equal])
   }else{
@@ -282,9 +283,9 @@ optim.PEP = function(
   ## printing initial design
   if(verb > 0) {
     cat("The initial design: ")
-    cat("ab=[", paste(signif(ab,3), collapse=", "), sep="")
-    cat("]; rho=[", paste(signif(rho,3), collapse=", "), sep="")
-    cat("]; xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
+    cat("ab=[", paste(signif(ab,4), collapse=", "), sep="")
+    cat("]; rho=[", paste(signif(rho,4), collapse=", "), sep="")
+    cat("]; xbest=[", paste(signif(xbest,4), collapse=" "), sep="")
     cat("]; ybest (prog=", m2, ", ep=", epbest, ", since=", since, ")\n", sep="")
   }
   
@@ -321,7 +322,7 @@ optim.PEP = function(
       rho[invalid] = rho[invalid] * 2
       scv = CV%*%rho; ep = obj + scv; epbest = min(ep)
       if(verb > 0) cat(" the smallest EP is not feasible, updating rho=(", 
-                       paste(signif(rho,3), collapse=", "), ")\n", sep="")
+                       paste(signif(rho,4), collapse=", "), ")\n", sep="")
     }
     
     ## Approximate the Pareto front and Pareto set via the NSGA-II algorithm.
@@ -440,11 +441,11 @@ optim.PEP = function(
       ## progress meter
       if(verb > 0) {
         cat("k=", k+cl, " ", sep="")
-        cat("; xnext ([", paste(signif(X[k+cl,],3), collapse=" "), 
+        cat("; xnext ([", paste(signif(X[k+cl,],4), collapse=" "), 
             "], feasibility=", feasibility[k+cl], ")\n", sep="")
-        cat(" xbest=[", paste(signif(xbest,3), collapse=" "), sep="")
-        cat("]; ybest (prog=", paste(signif(m2,3), collapse=" ")) 
-        cat(", ep=", paste(signif(epbest,3), collapse=" "))
+        cat(" xbest=[", paste(signif(xbest,4), collapse=" "), sep="")
+        cat("]; ybest (prog=", paste(signif(m2,4), collapse=" ")) 
+        cat(", ep=", paste(signif(epbest,4), collapse=" "))
         cat(", since=", since, ")\n", sep="")
       }
     }
@@ -454,12 +455,16 @@ optim.PEP = function(
       rho_new = rep(0, nc)
     }else {
       ECV = colMeans(CV)
-      rho_new = mean(abs(obj)) * ECV/sum(ECV^2)
+      rho_new = mean(abs(obj)) * ECV/sum(ECV)^2
+      rho_new = pmin(rho_new, 100) # Prevent excessive penalty parameters
     }
-    if(verb > 0 && any(rho_new > rho)){ # printing progress
-      cat("  updating rho=[", paste(signif(pmax(rho_new, rho),3), collapse=", "), "]\n", sep="")
+    if(nc > 1){
+      if(verb > 0 && any(rho_new > rho)){ # printing progress
+        cat("  updating rho=[", paste(signif(pmax(rho_new, rho),4), collapse=", "), "]\n", sep="")
+      }
+      rho = pmax(rho_new, rho)
     }
-    rho = pmax(rho_new, rho) 
+ 
     
     ## plot progress, Pareto Front, and Pareto set
     if(plotPareto) {
@@ -493,7 +498,7 @@ optim.PEP = function(
              col = 1:nprl, pch = 18, cex = 2)
       
       # Pareto Set
-      plot(unnormalize(AF_PS[,1:2], B), 
+      plot(unnormalize(AF_PS, B)[,1:2], 
            xlim = B[1,], ylim = B[2,], 
            pch = 4, col = AF_cl$cluster+2,
            lwd = 1.5, cex = 0.6,
