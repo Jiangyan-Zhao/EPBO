@@ -110,14 +110,14 @@ optim.EIvsPoF = function(
   obj = rep(NA, start)                        # objective values
   feasibility = rep(NA, start)                # Whether the point is feasible?
   C = matrix(NA, nrow=start, ncol=nc)         # constraint values in terms of bi-log transformation
-  obj[1] = out$obj; C[1, ] = bilog(out$c)
+  obj[1] = out$obj; C[1, ] = out$c
   feasibility[1] = all(C[1,] <= 0)
   prog[1] = ifelse(feasibility[1], obj[1], Inf)
 
   ## remainder of starting run
   for(k in 2:start) { ## now that problem is vectorized we can probably remove for
     out = blackbox(X[k,], ...)
-    obj[k] = out$obj; C[k,] = bilog(out$c)
+    obj[k] = out$obj; C[k,] = out$c
     feasibility[k] = all(C[k,] <= 0)
     prog[k] = ifelse(feasibility[k] && obj[k] < prog[k-1], obj[k], prog[k-1]) 
   }
@@ -137,18 +137,12 @@ optim.EIvsPoF = function(
   ab = darg(NULL, X_unit)$ab
   fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
   fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
-  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
-  df[df<dlim[1]] = 10*dlim[1]
-  df[df>dlim[2]] = dlim[2]/10
   
   ## initializing constraint surrogates
   Cgpi = rep(NA, nc)
   dc = matrix(NA, nrow=nc, ncol=dim)
   for (j in 1:nc) {
     Cgpi[j] = newGPsep(X_unit, C[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
-    dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-    dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-    dc[j, dc[j,]>dlim[2]] = dlim[2]/10
   }
   
   ## printing initial design
@@ -164,20 +158,22 @@ optim.EIvsPoF = function(
     ## rebuild surrogates periodically under new normalized responses
     if(k > start && (ceiling((k-start)/nprl) %% urate == 0)) {
       ## objective surrogate
+      df = mleGPsep(fgpi, param = "d", ab = ab, 
+                    tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
+      df[df<=dlim[1]] = dlim[1] * 1.001
+      df[df>=dlim[2]] = dlim[2] * 0.999
       deleteGPsep(fgpi)
       fmean = mean(obj); fsd = sd(obj)
       fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
-      df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-      df[df<dlim[1]] = 10*dlim[1]
-      df[df>dlim[2]] = dlim[2]/10
       
       ## constraint surrogates 
       for(j in 1:nc) {
+        dc[j,] = mleGPsep(Cgpi[j], param = "d", ab = ab, 
+                          tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
+        dc[j, dc[j,]<=dlim[1]] = dlim[1] * 1.001
+        dc[j, dc[j,]>=dlim[2]] = dlim[2] * 0.999
         deleteGPsep(Cgpi[j])
         Cgpi[j] = newGPsep(X_unit, C[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
-        dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-        dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-        dc[j, dc[j,]>dlim[2]] = dlim[2]/10
       }
     }
     
@@ -219,7 +215,7 @@ optim.EIvsPoF = function(
       ## new run
       out = blackbox(xnext, ...)
       fnext = out$obj; obj = c(obj, fnext)
-      C = rbind(C, bilog(out$c))
+      C = rbind(C, out$c)
       
       ## check if the BFOV has changed
       feasibility = c(feasibility, all(out$c <= 0))
@@ -254,9 +250,13 @@ optim.EIvsPoF = function(
       ## progress
       if(is.finite(m2)){
         plot(prog, type="l", lwd=1.6, 
+             xlim=c(start, k+nprl),
+             ylim=range(prog[max(which(is.finite(prog))[1], start):(k+nprl)]), 
              xlab="n", ylab="BFOV", main="progress")
       }else{
-        plot(prog, type="l", ylim=range(obj), lwd=1.6, 
+        plot(prog, type="l", lwd=1.6, 
+             xlim=c(start, k+nprl),
+             ylim=range(obj[start:(k+nprl)]), 
              xlab="n", ylab="BFOV", main="progress")
       }
       
@@ -293,15 +293,8 @@ optim.EIvsPoF = function(
     
     ## update GP fits
     updateGPsep(fgpi, tail(X_unit, nprl), (tail(obj,nprl)-fmean)/fsd, verb = 0)
-    df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
-    df[df<dlim[1]] = 10*dlim[1]
-    df[df>dlim[2]] = dlim[2]/10
-    
     for(j in 1:nc){
       updateGPsep(Cgpi[j], tail(X_unit, nprl), tail(C[,j],nprl), verb = 0)
-      dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
-      dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-      dc[j, dc[j,]>dlim[2]] = dlim[2]/10
     }
   }
   
@@ -309,5 +302,5 @@ optim.EIvsPoF = function(
   deleteGPsep(fgpi)
   for(j in 1:nc) deleteGPsep(Cgpi[j])
   
-  return(list(prog = prog, xbest = xbest, obj = obj, C=unbilog(C), X = X))
+  return(list(prog = prog, xbest = xbest, obj = obj, C=C, X = X))
 }

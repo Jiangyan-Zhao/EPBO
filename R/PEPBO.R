@@ -230,7 +230,7 @@ optim.PEP = function(
       rho = rep(0, nc)
     }else {
       ECV = colMeans(CV) # averaged CV
-      rho = mean(abs(obj)) * ECV/sum(ECV)^2
+      rho = mean(abs(obj)) * ECV/sum(ECV^2)
       rho = pmin(rho, 100) # Prevent excessive penalty parameters
     }
     if(any(equal)) rho[equal] = pmax(1/ethresh/sum(equal), rho[equal])
@@ -256,28 +256,25 @@ optim.PEP = function(
   ab = darg(NULL, X_unit)$ab
   fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
   fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
-  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = verb-1)$d
-  df[df<dlim[1]] = 10*dlim[1]
-  df[df>dlim[2]] = dlim[2]/10
+  df = mleGPsep(fgpi, param = "d", ab = ab, 
+                tmin = dlim[1], tmax = dlim[2],
+                verb = verb-1)$d
+  df[df<=dlim[1]] = dlim[1] * 1.001
+  df[df>=dlim[2]] = dlim[2] * 0.999
   deleteGPsep(fgpi)
   fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
-  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-  df[df<dlim[1]] = 10*dlim[1]
-  df[df>dlim[2]] = dlim[2]/10
   
   ## initializing constraint surrogates
   Cgpi = rep(NA, nc)
   dc = matrix(NA, nrow=nc, ncol=dim)
   for (j in 1:nc) {
     Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dg_start[1], g=dg_start[2], dK=TRUE)
-    dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-    dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-    dc[j, dc[j,]>dlim[2]] = dlim[2]/10
+    dc[j,] = mleGPsep(Cgpi[j], param = "d", ab = ab, 
+                      tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
+    dc[j, dc[j,]<=dlim[1]] = dlim[1] * 1.001
+    dc[j, dc[j,]>=dlim[2]] = dlim[2] * 0.999
     deleteGPsep(Cgpi[j])
-    Cgpi[j] = newGPsep(X_unit, C[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
-    dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-    dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-    dc[j, dc[j,]>dlim[2]] = dlim[2]/10
+    Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
   }
   
   ## printing initial design
@@ -296,20 +293,22 @@ optim.PEP = function(
     ## rebuild surrogates periodically under new normalized responses
     if(k > start && (ceiling((k-start)/nprl) %% urate == 0)) {
       ## objective surrogate
+      df = mleGPsep(fgpi, param = "d", ab = ab, 
+                    tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
+      df[df<=dlim[1]] = dlim[1] * 1.001
+      df[df>=dlim[2]] = dlim[2] * 0.999
       deleteGPsep(fgpi)
       fmean = mean(obj); fsd = sd(obj)
       fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
-      df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-      df[df<dlim[1]] = 10*dlim[1]
-      df[df>dlim[2]] = dlim[2]/10
       
       ## constraint surrogates 
       for(j in 1:nc) {
+        dc[j,] = mleGPsep(Cgpi[j], param = "d", ab = ab, 
+                          tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
+        dc[j, dc[j,]<=dlim[1]] = dlim[1] * 1.001
+        dc[j, dc[j,]>=dlim[2]] = dlim[2] * 0.999
         deleteGPsep(Cgpi[j])
         Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d=dc[j,], g=dg_start[2], dK=TRUE)
-        dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb=verb-1)$d
-        dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-        dc[j, dc[j,]>dlim[2]] = dlim[2]/10
       }
     }
     
@@ -337,7 +336,7 @@ optim.PEP = function(
     AF_PS = AF_Pareto$par   # Pareto set
     PF_selected = matrix(NA, nrow = nprl, ncol = 2)
     
-    ## Remove Pareto sets with probability of feasibility less than 0.9
+    ## Remove Pareto sets with probability of feasibility less than 0.95
     # CVthresh = pmax(apply(CV, 2, max) * 0.1, 0.1)
     CVthresh = 0.1
     PS_PoF_idx = which(AF_PoF(AF_PS, Cgpi, equal, CVthresh) > 0.05)
@@ -349,14 +348,15 @@ optim.PEP = function(
     ## pure exploitation (minimize the predictive mean)
     min_EY_idx = which.min(AF_PF[,2])
     PF_selected[1,] = AF_PF[min_EY_idx, ]
-    out_EY = optim( # enhance the EY approach
-      par=AF_PS[min_EY_idx, ], fn=AF_EY, method="L-BFGS-B",
-      lower=0, upper=1,
-      fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
-      rho=rho, equal=equal)
+    # out_EY = optim( # enhance the EY approach
+    #   par=AF_PS[min_EY_idx, ], fn=AF_EY, method="L-BFGS-B",
+    #   lower=0, upper=1,
+    #   fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
+    #   rho=rho, equal=equal)
 
     # calculate next point
-    xnext_unit = matrix(out_EY$par, nrow = 1)
+    # xnext_unit = matrix(out_EY$par, nrow = 1)
+    xnext_unit = AF_PS[min_EY_idx, , drop=FALSE]
     X_unit = rbind(X_unit, xnext_unit)
     xnext = unnormalize(xnext_unit, B)
     X = rbind(X, xnext)
@@ -364,15 +364,16 @@ optim.PEP = function(
     ## pure exploration (maximize the predictive standard deviation)
     max_SDY_idx = which.max(-AF_PF[,1])
     PF_selected[2,] = AF_PF[max_SDY_idx, ]
-    out_SDY = optim( # enhance the SDY approach
-      par=AF_PS[max_SDY_idx, ], fn=AF_SDY, method="L-BFGS-B",
-      lower=0, upper=1,
-      control = list(fnscale = -1), # maximization problem
-      fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
-      rho=rho, equal=equal)
+    # out_SDY = optim( # enhance the SDY approach
+    #   par=AF_PS[max_SDY_idx, ], fn=AF_SDY, method="L-BFGS-B",
+    #   lower=0, upper=1,
+    #   control = list(fnscale = -1), # maximization problem
+    #   fgpi=fgpi, Cgpi=Cgpi, fmean=fmean, fsd=fsd, 
+    #   rho=rho, equal=equal)
     
     # calculate next point
-    xnext_unit = matrix(out_SDY$par, nrow = 1)
+    # xnext_unit = matrix(out_SDY$par, nrow = 1)
+    xnext_unit = AF_PS[max_SDY_idx, , drop=FALSE]
     X_unit = rbind(X_unit, xnext_unit)
     xnext = unnormalize(xnext_unit, B)
     X = rbind(X, xnext)
@@ -455,15 +456,13 @@ optim.PEP = function(
       rho_new = rep(0, nc)
     }else {
       ECV = colMeans(CV)
-      rho_new = mean(abs(obj)) * ECV/sum(ECV)^2
+      rho_new = mean(abs(obj)) * ECV/sum(ECV^2)
       rho_new = pmin(rho_new, 100) # Prevent excessive penalty parameters
     }
-    if(nc > 1){
-      if(verb > 0 && any(rho_new > rho)){ # printing progress
-        cat("  updating rho=[", paste(signif(pmax(rho_new, rho),4), collapse=", "), "]\n", sep="")
-      }
-      rho = pmax(rho_new, rho)
+    if(verb > 0 && any(rho_new > rho)){ # printing progress
+      cat("  updating rho=[", paste(signif(pmax(rho_new, rho),4), collapse=", "), "]\n", sep="")
     }
+    rho = pmax(rho_new, rho)
  
     
     ## plot progress, Pareto Front, and Pareto set
@@ -472,9 +471,13 @@ optim.PEP = function(
       ## progress
       if(is.finite(m2)){
         plot(prog, type="l", lwd=1.6, 
+             xlim=c(start, k+nprl),
+             ylim=range(prog[max(which(is.finite(prog))[1], start):(k+nprl)]), 
              xlab="n", ylab="BFOV", main="progress")
       }else{
-        plot(prog, type="l", ylim=range(obj), lwd=1.6, 
+        plot(prog, type="l", lwd=1.6, 
+             xlim=c(start, k+nprl),
+             ylim=range(obj[start:(k+nprl)]), 
              xlab="n", ylab="BFOV", main="progress")
       }
       
@@ -511,32 +514,20 @@ optim.PEP = function(
     
     ## update GP fits
     updateGPsep(fgpi, tail(X_unit, nprl), (tail(obj,nprl)-fmean)/fsd, verb = 0)
-    df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
-    df[df<dlim[1]] = 10*dlim[1]
-    df[df>dlim[2]] = dlim[2]/10
     sigma_f = sqrt(predGPsep(fgpi, X_unit, lite=TRUE)$s2) #* fsd
     if(median(sigma_f) > 0.1){# rebuild GP as sigma is large at observed points
       if(verb > 0) cat(" rebuild objective surrogate as sigma is large at observed points \n")
       deleteGPsep(fgpi)
       fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dlim[1], g = dg_start[2], dK=TRUE)
-      df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
-      df[df<dlim[1]] = 10*dlim[1]
-      df[df>dlim[2]] = dlim[2]/10
     }
     
     for(j in 1:nc) {
       updateGPsep(Cgpi[j], tail(X_unit, nprl), tail(C_bilog[,j],nprl), verb = 0)
-      dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
-      dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-      dc[j, dc[j,]>dlim[2]] = dlim[2]/10
       sigma_c = sqrt(predGPsep(Cgpi[j], X_unit, lite=TRUE)$s2)
       if(median(sigma_c) > 0.1){ # rebuild GP as sigma is large at observed points
         if(verb > 0) cat(" rebuild constrained", j, "surrogate as sigma is large at observed points \n")
         deleteGPsep(Cgpi[j])
         Cgpi[j] = newGPsep(X_unit, C_bilog[,j], d = dlim[1], g = dg_start[2], dK=TRUE)
-        dc[j,] = mleGPsep(Cgpi[j], param = "d",  tmin = dlim[1], tmax = dlim[2], ab = ab, verb = 0)$d
-        dc[j, dc[j,]<dlim[1]] = 10*dlim[1]
-        dc[j, dc[j,]>dlim[2]] = dlim[2]/10
       }
     }
   }
