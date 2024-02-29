@@ -24,10 +24,7 @@
 #' parameter(s) 
 #' @param dg.start 2-vector giving starting values for the lengthscale and nugget parameters
 #' of the GP surrogate model(s) for constraints
-#' @param ab prior parameters; see \code{\link{darg}} describing the prior used on the
-#' lengthscale parameter during emulation(s) for the constraints
-#' @param dlim 2-vector giving bounds for the lengthscale parameter(s) under MLE/MAP inference,
-#' thereby augmenting the prior specification in \code{ab}
+#' @param dlim 2-vector giving bounds for the lengthscale parameter(s) under MLE/MAP inference
 #' @param plotPareto \code{logical} indicating if the Pareto plots should be made after each inner iteration;
 #' the plots show two panels tracking the Pareto front, and the Pareto set
 #' @param verb a non-negative integer indicating the verbosity level; the larger the value the
@@ -84,8 +81,8 @@
 optim.EIvsPoF = function(
     blackbox, B, nprl=3, start=10, end=100, 
     Xstart=NULL, urate=ceiling(10/nprl),
-    dg_start=c(1e-2*sqrt(nrow(B)), 1e-6), 
-    dlim=c(1e-4, 1)*sqrt(nrow(B)), 
+    dg_start=c(0.1*sqrt(nrow(B)), 1e-6), 
+    dlim=c(1e-3, 10)*sqrt(nrow(B)), 
     plotPareto=FALSE, verb=2, ...)
 {
   ## check start
@@ -134,9 +131,7 @@ optim.EIvsPoF = function(
   # xbest_unit = as.vector(normalize(xbest, B))
   
   ## initialize objective surrogate
-  ab = darg(NULL, X_unit)$ab
-  fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
-  fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
+  fgpi = newGPsep(X_unit, obj, d = dg_start[1], g = dg_start[2], dK = TRUE)
   
   ## initializing constraint surrogates
   Cgpi = rep(NA, nc)
@@ -148,7 +143,6 @@ optim.EIvsPoF = function(
   ## printing initial design
   if(verb > 0) {
     cat("The initial design: ")
-    cat("ab=[", paste(signif(ab,4), collapse=", "), sep="")
     cat("]; xbest=[", paste(signif(xbest,4), collapse=" "), sep="")
     cat("]; ybest (prog=", m2, ", since=", since, ")\n", sep="")
   }
@@ -158,18 +152,15 @@ optim.EIvsPoF = function(
     ## rebuild surrogates periodically under new normalized responses
     if(k > start && (ceiling((k-start)/nprl) %% urate == 0)) {
       ## objective surrogate
-      df = mleGPsep(fgpi, param = "d", ab = ab, 
-                    tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
+      df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
       df[df<=dlim[1]] = dlim[1] * 1.001
       df[df>=dlim[2]] = dlim[2] * 0.999
       deleteGPsep(fgpi)
-      fmean = mean(obj); fsd = sd(obj)
-      fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
+      fgpi = newGPsep(X_unit, obj, d=df, g=dg_start[2], dK=TRUE)
       
       ## constraint surrogates 
       for(j in 1:nc) {
-        dc[j,] = mleGPsep(Cgpi[j], param = "d", ab = ab, 
-                          tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
+        dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
         dc[j, dc[j,]<=dlim[1]] = dlim[1] * 1.001
         dc[j, dc[j,]>=dlim[2]] = dlim[2] * 0.999
         deleteGPsep(Cgpi[j])
@@ -181,9 +172,9 @@ optim.EIvsPoF = function(
     ## Approximate the Pareto front and Pareto set via the NSGA-II algorithm.
     AF_Pareto = nsga2(
       fn=AF_EIvsPoF, idim=dim, odim=2,
-      fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2,
+      fgpi=fgpi, Cgpi=Cgpi, fmin=m2,
       generations=100, popsize=100*nprl,
-      # cprob=0.9, cdist=20, mprob=0.1, mdist=20,
+      cprob=0.9, cdist=20, mprob=0.1, mdist=20,
       lower.bounds=rep(0, dim), upper.bounds=rep(1, dim))
     AF_PF = AF_Pareto$value # Pareto front
     AF_PS = AF_Pareto$par   # Pareto set
@@ -292,7 +283,7 @@ optim.EIvsPoF = function(
     }
     
     ## update GP fits
-    updateGPsep(fgpi, tail(X_unit, nprl), (tail(obj,nprl)-fmean)/fsd, verb = 0)
+    updateGPsep(fgpi, tail(X_unit, nprl), tail(obj,nprl), verb = 0)
     for(j in 1:nc){
       updateGPsep(Cgpi[j], tail(X_unit, nprl), tail(C[,j],nprl), verb = 0)
     }

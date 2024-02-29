@@ -4,16 +4,12 @@
 \alias{AF_EIvsPoF}
 \title{EI versus PoF}
 \usage{
-AF_EIvsPoF(x, fgpi, fmean, fsd, Cgpi, fmin)
+AF_EIvsPoF(x, fgpi, Cgpi, fmin)
 }
 \arguments{
 \item{x}{a vector containing a single candidate point}
 
 \item{fgpi}{the GP surrogate model of the objective function}
-
-\item{fmean}{the mean of the objective value}
-
-\item{fsd}{the standard deviation of the objective value}
 
 \item{Cgpi}{the GP surrogate models of the constraints}
 

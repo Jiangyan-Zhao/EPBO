@@ -4,8 +4,6 @@
 #' 
 #' @param x a vector containing a single candidate point
 #' @param fgpi the GP surrogate model of the objective function
-#' @param fmean the mean of the objective value
-#' @param fsd the standard deviation of the objective value
 #' @param Cgpi the GP surrogate models of the constraints
 #' @param fmin the best feasible objective value obtained so far
 #' 
@@ -26,16 +24,16 @@
 #' @export
 
 
-AF_EIvsPoF = function(x, fgpi, fmean, fsd, Cgpi, fmin)
+AF_EIvsPoF = function(x, fgpi, Cgpi, fmin)
 {
   if(!is.null(nrow(x))) stop("x must be a vector, that is, one test point at a time")
   x = matrix(x, nrow=1)
   
   ## the EI part
   pred_f = predGPsep(fgpi, x, lite=TRUE)
-  mu_f = pred_f$mean * fsd + fmean
-  sigma_f = sqrt(pred_f$s2) * fsd
-  if(!is.finite(fmin)) fmin = mu_f + 0.1 * abs(mu_f)
+  mu_f = pred_f$mean
+  sigma_f = sqrt(pred_f$s2)
+  if(!is.finite(fmin)) fmin = 1e6
   d = (fmin - mu_f)/sigma_f
   EI = sigma_f*(d*pnorm(d) + dnorm(d))
   EI = max(EI, .Machine$double.eps)

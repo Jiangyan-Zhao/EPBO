@@ -12,8 +12,8 @@ optim.PEIC(
   end = 100,
   Xstart = NULL,
   urate = ceiling(10/nprl),
-  dg_start = c(0.01 * sqrt(nrow(B)), 1e-06),
-  dlim = c(1e-04, 1) * sqrt(nrow(B)),
+  dg_start = c(0.1 * sqrt(nrow(B)), 1e-06),
+  dlim = c(0.001, 10) * sqrt(nrow(B)),
   plotprog = FALSE,
   verb = 2,
   ...
@@ -47,8 +47,7 @@ have \code{ncol(Xstart) = nrow(B)}}
 each MLE/MAP update is performed for GP correlation lengthscale
 parameter(s)}
 
-\item{dlim}{2-vector giving bounds for the lengthscale parameter(s) under MLE/MAP inference,
-thereby augmenting the prior specification in \code{ab}}
+\item{dlim}{2-vector giving bounds for the lengthscale parameter(s) under MLE/MAP inference}
 
 \item{plotprog}{\code{logical} indicating if the Pareto plots should be made after each inner iteration;
 the plots show two panels tracking the best feasible objective values,
@@ -61,9 +60,6 @@ more that is printed to the screen}
 
 \item{dg.start}{2-vector giving starting values for the lengthscale and nugget parameters
 of the GP surrogate model(s) for constraints}
-
-\item{ab}{prior parameters; see \code{\link{darg}} describing the prior used on the
-lengthscale parameter during emulation(s) for the constraints}
 }
 \value{
 The output is a \code{list} summarizing the progress of the evaluations of the

@@ -12,6 +12,8 @@
 #' @param equal an optional vector containing zeros and ones, whose length equals the number of
 #' constraints, specifying which should be treated as equality constraints (\code{1}) and 
 #' which as inequality (\code{0}) 
+#' @param CVthresh a threshold used for equality constraints to determine validity for 
+#' progress measures; ignored if there are no equality constraints
 #' 
 #' @returns The Predictive Standard Deviation at \code{x}. 
 #' 
@@ -28,7 +30,7 @@
 #' @export
 
 
-AF_SDY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
+AF_SDY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal, CVthresh=0.1)
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x) # number of the candidate points
@@ -36,11 +38,12 @@ AF_SDY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
   ## objective
   pred_f = predGPsep(fgpi, x, lite=TRUE)
   # mu_f = pred_f$mean * fsd + fmean
-  # sigma_f = sqrt(pred_f$s2) * fsd
+  sigma_f = sqrt(pred_f$s2) * fsd
   
   ## constraints
   nc = length(Cgpi) # number of the constraint
   EV = VV = matrix(NA, nc, ncand)
+  PoF = rep(1, ncand)
   for (j in 1:nc) {
     pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
     mu_C = pred_C$mean
@@ -51,17 +54,24 @@ AF_SDY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
     if(equal[j]){ 
       EV[j,] = mu_C * (2 * dC_cdf - 1) + 2 * sigma_C * dC_pdf
       VV[j,] = (mu_C^2 + sigma_C^2) - EV[j,]^2
+      PoF = PoF * (pnorm(CVthresh, mu_C, sigma_C) - pnorm(-CVthresh, mu_C, sigma_C))
     }else{
       EV[j,] = mu_C * dC_cdf + sigma_C * dC_pdf
       VV[j,] = (mu_C^2 + sigma_C^2) * dC_cdf + mu_C * sigma_C * dC_pdf- EV[j,]^2
+      PoF = PoF * pnorm(CVthresh, mu_C, sigma_C)
     }
   }
   VV = pmax(0, VV)
   
   ## the predictive standard deviation of the exact penalty surrogate
-  SDY = sqrt(pred_f$s2 + rho^2 %*% VV)
+  SDY = sqrt(sigma_f^2 + rho^2 %*% VV)
   # return(SDY)
   
-  SDY = pmax(.Machine$double.xmin, SDY)
-  return(log(SDY)) # log scale
+  # SDY = pmax(.Machine$double.xmin, SDY)
+  # return(log(SDY)) # log scale
+  
+  CSDY = SDY * PoF
+  
+  CSDY = pmax(.Machine$double.xmin, CSDY)
+  return(log(CSDY)) # log scale
 }

@@ -4,16 +4,12 @@
 \alias{AF_PEIC}
 \title{PEIC}
 \usage{
-AF_PEIC(x, fgpi, fmean, fsd, Cgpi, fmin, df, point_update)
+AF_PEIC(x, fgpi, Cgpi, fmin, df, point_update)
 }
 \arguments{
 \item{x}{a vector containing a single candidate point}
 
 \item{fgpi}{the GP surrogate model of the objective function}
-
-\item{fmean}{the mean of the objective value}
-
-\item{fsd}{the standard deviation of the objective value}
 
 \item{Cgpi}{the GP surrogate models of the constraints}
 

@@ -31,7 +31,7 @@
 #' @export
 
 
-AF_EY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
+AF_EY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal, type="EV")
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x) # number of the candidate points
@@ -40,19 +40,39 @@ AF_EY = function(x, fgpi, fmean, fsd, Cgpi, rho, equal)
   pred_f = predGPsep(fgpi, x, lite=TRUE)
   mu_f = pred_f$mean * fsd + fmean
   
-  ## constraints
-  nc = length(Cgpi) # number of the constraint
-  EV = matrix(NA, nc, ncand)
-  for (j in 1:nc) {
-    pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
-    mu_C = pred_C$mean
-    sigma_C = sqrt(pred_C$s2)
-    dC = mu_C/sigma_C
-    EV[j,] = mu_C*((equal[j]+1)*pnorm(dC) - equal[j]) + (equal[j]+1)*sigma_C*dnorm(dC)
+  if(type == "EV"){ 
+    ## constraints
+    nc = length(Cgpi) # number of the constraint
+    EV = matrix(NA, nc, ncand)
+    for (j in 1:nc) {
+      pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
+      mu_C = pred_C$mean
+      sigma_C = sqrt(pred_C$s2)
+      dC = mu_C/sigma_C
+      EV[j,] = mu_C*((equal[j]+1)*pnorm(dC) - equal[j]) + (equal[j]+1)*sigma_C*dnorm(dC)
+    }
+    
+    ## the predictive mean of the exact penalty surrogate
+    EY = mu_f + rho%*%EV
+  }else if(type == "CV"){ 
+    ## constraints
+    nc = length(Cgpi) # number of the constraint
+    CV = matrix(NA, nc, ncand)
+    for (j in 1:nc) {
+      pred_C = predGPsep(Cgpi[j], x, lite=TRUE)
+      mu_C = pred_C$mean
+      if(equal[j]){
+        CV[j,] = abs(mu_C)
+      }else{
+        CV[j,] = pmax(0, mu_C)
+      }
+    }
+    
+    ## the predictive mean of the exact penalty surrogate
+    EY = mu_f + rho%*%CV
+  }else{
+    stop("The type of EY must be EV or CV")
   }
   
-  ## the predictive mean of the exact penalty surrogate
-  EY = mu_f + rho%*%EV
-
   return(EY)
 }

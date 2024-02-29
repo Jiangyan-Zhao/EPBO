@@ -24,10 +24,7 @@
 #' parameter(s) 
 #' @param dg.start 2-vector giving starting values for the lengthscale and nugget parameters
 #' of the GP surrogate model(s) for constraints
-#' @param ab prior parameters; see \code{\link{darg}} describing the prior used on the
-#' lengthscale parameter during emulation(s) for the constraints
-#' @param dlim 2-vector giving bounds for the lengthscale parameter(s) under MLE/MAP inference,
-#' thereby augmenting the prior specification in \code{ab}
+#' @param dlim 2-vector giving bounds for the lengthscale parameter(s) under MLE/MAP inference
 #' @param plotprog \code{logical} indicating if the Pareto plots should be made after each inner iteration;
 #' the plots show two panels tracking the best feasible objective values, 
 #' and the updating points in a single iteration in parallel
@@ -83,8 +80,8 @@
 optim.PEIC = function(
     blackbox, B, nprl=3, start=10, end=100, 
     Xstart=NULL, urate=ceiling(10/nprl),
-    dg_start=c(1e-2*sqrt(nrow(B)), 1e-6), 
-    dlim=c(1e-4, 1)*sqrt(nrow(B)), 
+    dg_start=c(0.1*sqrt(nrow(B)), 1e-6), 
+    dlim=c(1e-3, 10)*sqrt(nrow(B)), 
     plotprog=FALSE, verb=2, ...)
 {
   ## check start
@@ -133,12 +130,8 @@ optim.PEIC = function(
   # xbest_unit = as.vector(normalize(xbest, B))
   
   ## initialize objective surrogate
-  ab = darg(NULL, X_unit)$ab
-  fmean = mean(obj); fsd = sd(obj) # for standard normalization on objective values
-  fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d = dg_start[1], g = dg_start[2], dK = TRUE)
-  df = mleGPsep(fgpi, param = "d", ab = ab, 
-                tmin = dlim[1], tmax = dlim[2], # for safe
-                verb = verb-1)$d
+  fgpi = newGPsep(X_unit, obj, d = dg_start[1], g = dg_start[2], dK = TRUE)
+  df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], verb = verb-1)$d
   df[df<=dlim[1]] = dlim[1] * 1.001
   df[df>=dlim[2]] = dlim[2] * 0.999
   
@@ -152,7 +145,6 @@ optim.PEIC = function(
   ## printing initial design
   if(verb > 0) {
     cat("The initial design: ")
-    cat("ab=[", paste(signif(ab,4), collapse=", "), sep="")
     cat("]; xbest=[", paste(signif(xbest,4), collapse=" "), sep="")
     cat("]; ybest (prog=", m2, ", since=", since, ")\n", sep="")
   }
@@ -162,18 +154,15 @@ optim.PEIC = function(
     ## rebuild surrogates periodically under new normalized responses
     if(k > start && (ceiling((k-start)/nprl) %% urate == 0)) {
       ## objective surrogate
-      df = mleGPsep(fgpi, param = "d", ab = ab, 
-                    tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
+      deleteGPsep(fgpi)
+      fgpi = newGPsep(X_unit, obj, d=df, g=dg_start[2], dK=TRUE)
+      df = mleGPsep(fgpi, param = "d", tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
       df[df<=dlim[1]] = dlim[1] * 1.001
       df[df>=dlim[2]] = dlim[2] * 0.999
-      deleteGPsep(fgpi)
-      fmean = mean(obj); fsd = sd(obj)
-      fgpi = newGPsep(X_unit, (obj-fmean)/fsd, d=df, g=dg_start[2], dK=TRUE)
       
       ## constraint surrogates 
       for(j in 1:nc) {
-        dc[j,] = mleGPsep(Cgpi[j], param = "d", ab = ab, 
-                          tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
+        dc[j,] = mleGPsep(Cgpi[j], param = "d", tmin = dlim[1], tmax = dlim[2], verb=verb-1)$d
         dc[j, dc[j,]<=dlim[1]] = dlim[1] * 1.001
         dc[j, dc[j,]>=dlim[2]] = dlim[2] * 0.999
         deleteGPsep(Cgpi[j])
@@ -187,9 +176,9 @@ optim.PEIC = function(
     for (prl in 1:nprl) {
       out_AF = psoptim(
         rep(NA,dim), fn = AF_PEIC,
-        fgpi=fgpi, fmean=fmean, fsd=fsd, Cgpi=Cgpi, fmin=m2_old,
+        fgpi=fgpi, Cgpi=Cgpi, fmin=m2_old,
         df=df, point_update=tail(X_unit, prl-1),
-        lower = rep(0, dim), upper = rep(1, dim),
+        lower = 0, upper = 1,
         control = list(maxit = 100,   # generations
                        s = 100,       # swarm size
                        fnscale = -1)) # for maximization
@@ -261,7 +250,7 @@ optim.PEIC = function(
     }
     
     ## update GP fits
-    updateGPsep(fgpi, tail(X_unit, nprl), (tail(obj,nprl)-fmean)/fsd, verb = 0)
+    updateGPsep(fgpi, tail(X_unit, nprl), tail(obj,nprl), verb = 0)
     for(j in 1:nc){
       updateGPsep(Cgpi[j], tail(X_unit, nprl), tail(C[,j],nprl), verb = 0)
     }

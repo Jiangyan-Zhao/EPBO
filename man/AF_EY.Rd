@@ -4,7 +4,7 @@
 \alias{AF_EY}
 \title{Predictive mean acquisition function}
 \usage{
-AF_EY(x, fgpi, fmean, fsd, Cgpi, rho, equal)
+AF_EY(x, fgpi, fmean, fsd, Cgpi, rho, equal, type = "EV")
 }
 \arguments{
 \item{x}{a vector containing a single candidate point; or a \code{matrix} with

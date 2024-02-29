@@ -4,8 +4,6 @@
 #' 
 #' @param x a vector containing a single candidate point
 #' @param fgpi the GP surrogate model of the objective function
-#' @param fmean the mean of the objective value
-#' @param fsd the standard deviation of the objective value
 #' @param Cgpi the GP surrogate models of the constraints
 #' @param fmin the best feasible objective value obtained so far
 #' @param df the lengthscale parameters of the \code{fgpi} surrogate model
@@ -29,7 +27,7 @@
 #' @export
 
 
-AF_PEIC = function(x, fgpi, fmean, fsd, Cgpi, fmin, df, point_update)
+AF_PEIC = function(x, fgpi, Cgpi, fmin, df, point_update)
 {
   if(is.null(nrow(x))) x = matrix(x, nrow=1)
   ncand = nrow(x)
@@ -48,8 +46,8 @@ AF_PEIC = function(x, fgpi, fmean, fsd, Cgpi, fmin, df, point_update)
   EI = rep(1, ncand)
   if(is.finite(fmin)){
     pred_f = predGPsep(fgpi, x, lite=TRUE)
-    mu_f = pred_f$mean * fsd + fmean
-    sigma_f = sqrt(pred_f$s2) * fsd
+    mu_f = pred_f$mean
+    sigma_f = sqrt(pred_f$s2)
     d = (fmin - mu_f)/sigma_f
     EI = sigma_f*(d*pnorm(d) + dnorm(d))
   }
@@ -60,7 +58,7 @@ AF_PEIC = function(x, fgpi, fmean, fsd, Cgpi, fmin, df, point_update)
   ## Influence function
   IF = rep(1, ncand) # the first updating point is selected by the standard EIC
   if(nrow(point_update) > 0){
-    corr = covar.sep(x, point_update, d=df, g=0) # correlation function
+    corr = covar.sep(x, point_update, d=df, g=1e-6) # correlation function
     IF = apply(1 - corr, 1, prod)
   }
   

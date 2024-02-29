@@ -4,7 +4,7 @@
 \alias{AF_SDY}
 \title{Predictive standard deviation acquisition function}
 \usage{
-AF_SDY(x, fgpi, fmean, fsd, Cgpi, rho, equal)
+AF_SDY(x, fgpi, fmean, fsd, Cgpi, rho, equal, CVthresh = 0.1)
 }
 \arguments{
 \item{x}{a vector containing a single candidate point; or a \code{matrix} with
@@ -23,6 +23,9 @@ multiple candidate points}
 \item{equal}{an optional vector containing zeros and ones, whose length equals the number of
 constraints, specifying which should be treated as equality constraints (\code{1}) and
 which as inequality (\code{0})}
+
+\item{CVthresh}{a threshold used for equality constraints to determine validity for
+progress measures; ignored if there are no equality constraints}
 }
 \value{
 The Predictive Standard Deviation at \code{x}.

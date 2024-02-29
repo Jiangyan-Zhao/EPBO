@@ -15,8 +15,8 @@ optim.PEP(
   end = 100,
   urate = ceiling(10/nprl),
   rho = NULL,
-  dg_start = c(0.01 * sqrt(nrow(B)), 1e-06),
-  dlim = c(1e-04, 1) * sqrt(nrow(B)),
+  dg_start = c(0.1 * sqrt(nrow(B)), 1e-06),
+  dlim = c(0.001, 10) * sqrt(nrow(B)),
   plotPareto = FALSE,
   verb = 2,
   ...
